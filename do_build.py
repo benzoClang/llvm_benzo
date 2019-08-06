@@ -1301,8 +1301,22 @@ def package_toolchain(build_dir, build_name, host: hosts.Host, dist_dir, strip=T
         if not os.path.isfile(os.path.join(lib_dir, necessary_lib_file)):
             raise RuntimeError('Did not find %s in %s' % (necessary_lib_file, lib_dir))
 
+    # Next, we copy over stdatomic.h and bits/stdatomic.h from bionic.
+    libc_include_path = utils.android_path('bionic', 'libc', 'include')
+    resdir_top = os.path.join(lib_dir, 'clang')
+    header_path = os.path.join(resdir_top, version.long_version(), 'include')
+
+    stdatomic_path = utils.android_path(libc_include_path, 'stdatomic.h')
+    install_file(stdatomic_path, header_path)
+
     # Install license files as NOTICE in the toolchain install dir.
     install_license_files(install_dir)
+
+    bits_install_path = os.path.join(header_path, 'bits')
+    if not os.path.isdir(bits_install_path):
+        os.mkdir(bits_install_path)
+    bits_stdatomic_path = utils.android_path(libc_include_path, 'bits', 'stdatomic.h')
+    install_file(bits_stdatomic_path, bits_install_path)
 
     # Add an VERSION file.
     version_file_path = os.path.join(install_dir, 'VERSION')
