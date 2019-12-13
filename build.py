@@ -27,7 +27,7 @@ import subprocess
 import textwrap
 import utils
 
-import android_version
+import benzo_version
 from version import Version
 
 import mapfile
@@ -81,7 +81,7 @@ def extract_clang_long_version(clang_install):
 
 
 def pgo_profdata_filename():
-    base_revision = android_version.svn_revision.rstrip(string.ascii_lowercase)
+    base_revision = benzo_version.svn_revision.rstrip(string.ascii_lowercase)
     return '%s.profdata' % base_revision
 
 def pgo_profdata_file(profdata_file):
@@ -323,10 +323,12 @@ def base_cmake_defines():
     defines['LLVM_ENABLE_THREADS'] = 'ON'
     defines['LLVM_USE_NEWPM'] = 'ON'
     defines['LLVM_LIBDIR_SUFFIX'] = '64'
-    defines['LLVM_VERSION_PATCH'] = android_version.patch_level
-    defines['CLANG_VERSION_PATCHLEVEL'] = android_version.patch_level
-    defines['CLANG_REPOSITORY_STRING'] = 'https://android.googlesource.com/toolchain/llvm-project'
-    defines['BUG_REPORT_URL'] = 'https://github.com/android-ndk/ndk/issues'
+    defines['LLVM_VERSION_PATCH'] = benzo_version.patch_level
+    defines['CLANG_VERSION_PATCHLEVEL'] = benzo_version.patch_level
+    defines['CLANG_REPOSITORY_STRING'] = 'https://github.com/benzoClang/llvm-project'
+    defines['CLANG_TC_DATE'] = datetime.datetime.now().strftime("%Y%m%d")
+    defines['CLANG_VENDOR'] = 'benzoClang'
+    defines['TOOLCHAIN_REVISION_STRING'] = benzo_version.svn_revision
 
     # http://b/111885871 - Disable building xray because of MacOS issues.
     defines['COMPILER_RT_BUILD_XRAY'] = 'OFF'
@@ -818,10 +820,8 @@ def build_llvm(targets,
     cmake_defines['CMAKE_INSTALL_PREFIX'] = install_dir
     cmake_defines['LLVM_TARGETS_TO_BUILD'] = targets
     cmake_defines['LLVM_BUILD_LLVM_DYLIB'] = 'ON'
-    cmake_defines['CLANG_VENDOR'] = 'Android (' + build_name + ' based on ' + \
-        android_version.svn_revision + ') '
     cmake_defines['LLVM_BINUTILS_INCDIR'] = utils.android_path(
-        'toolchain/binutils/binutils-2.27/include')
+        'toolchain/llvm-project/llvm/tools/binutils/include')
 
     if extra_defines is not None:
         cmake_defines.update(extra_defines)
@@ -971,13 +971,15 @@ def build_stage2(stage1_install,
     stage2_extra_defines = get_shared_extra_defines()
     stage2_extra_env = dict()
 
-    stage2_extra_defines['LLVM_ENABLE_PROJECTS'] += ';clang-tools-extra;openmp;lldb'
+    stage2_extra_defines['LLVM_ENABLE_PROJECTS'] += ';clang-tools-extra;polly;openmp'
     stage2_extra_defines['CMAKE_C_COMPILER'] = stage2_cc
     stage2_extra_defines['CMAKE_CXX_COMPILER'] = stage2_cxx
     stage2_extra_defines['LLVM_ENABLE_LIBCXX'] = 'ON'
     stage2_extra_defines['SANITIZER_ALLOW_CXXABI'] = 'OFF'
     stage2_extra_defines['OPENMP_ENABLE_OMPT_TOOLS'] = 'FALSE'
     stage2_extra_defines['LIBOMP_ENABLE_SHARED'] = 'FALSE'
+    stage2_extra_defines['LLVM_POLLY_LINK_INTO_TOOLS'] = 'ON'
+    stage2_extra_defines['CLANG_DEFAULT_LINKER'] = 'lld'
 
     update_cmake_sysroot_flags(stage2_extra_defines, host_sysroot())
 
@@ -1089,9 +1091,9 @@ def build_runtimes(toolchain, args=None):
         create_hwasan_symlink(toolchain, version)
 
 def install_wrappers(llvm_install_path):
-    wrapper_path = utils.android_path('toolchain', 'llvm_android',
+    wrapper_path = utils.android_path('toolchain', 'llvm_benzo',
                                       'compiler_wrapper.py')
-    bisect_path = utils.android_path('toolchain', 'llvm_android',
+    bisect_path = utils.android_path('toolchain', 'llvm_benzo',
                                      'bisect_driver.py')
     bin_path = os.path.join(llvm_install_path, 'bin')
     clang_path = os.path.join(bin_path, 'clang')
@@ -1179,13 +1181,8 @@ def install_license_files(install_dir):
         'clang',
         'clang-tools-extra',
         'lld',
+        'polly',
     )
-
-    # Get generic MODULE_LICENSE_* files from our android subdirectory.
-    llvm_android_path = utils.android_path('toolchain', 'llvm_android')
-    license_pattern = os.path.join(llvm_android_path, 'MODULE_LICENSE_*')
-    for license_file in glob.glob(license_pattern):
-        install_file(license_file, install_dir)
 
     # Fetch all the LICENSE.* files under our projects and append them into a
     # single NOTICE file for the resulting prebuilts.
@@ -1315,11 +1312,11 @@ def package_toolchain(build_dir, build_name, host, dist_dir, strip=True, create_
     # Install license files as NOTICE in the toolchain install dir.
     install_license_files(install_dir)
 
-    # Add an AndroidVersion.txt file.
-    version_file_path = os.path.join(install_dir, 'AndroidVersion.txt')
+    # Add an VERSION file.
+    version_file_path = os.path.join(install_dir, 'VERSION')
+    svn_revision = benzo_version.svn_revision
     with open(version_file_path, 'w') as version_file:
-        version_file.write('{}\n'.format(version.long_version()))
-        version_file.write('based on {}\n'.format(android_version.svn_revision))
+        version_file.write('11.0.0-{}-benzoClang\n'.format(svn_revision))
 
     # Package up the resulting trimmed install/ directory.
     if create_tar:
@@ -1355,7 +1352,7 @@ def parse_args():
         default=0,
         help='Increase log level. Defaults to logging.INFO.')
     parser.add_argument(
-        '--build-name', default='dev', help='Release name for the package.')
+        '--build-name', default='benzo', help='Release name for the package.')
 
     parser.add_argument(
         '--enable-assertions',

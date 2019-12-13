@@ -15,5 +15,5 @@
 # limitations under the License.
 #
 
-patch_level = '1'
+patch_level = '0'
 svn_revision = 'r370808'
