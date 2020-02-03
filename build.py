@@ -1316,6 +1316,20 @@ def package_toolchain(build_dir, build_name, host, dist_dir, strip=True, create_
     with open(version_file_path, 'w') as version_file:
         version_file.write('11.0.0-{}-benzoClang\n'.format(svn_revision))
 
+    # Create RBE input files.
+    with open(os.path.join(install_dir, 'bin', 'remote_toolchain_inputs'), 'w') as inputs_file:
+        dependencies = ('clang\n'
+                        'clang++\n'
+                        'clang.real\n'
+                        'clang++.real\n'
+                        '../lib64/libc++.so.1\n'
+                       )
+        blacklist_dir = os.path.join('lib64', 'clang', version.long_version(), 'share')
+        blacklist_files = os.listdir(os.path.join(install_dir, blacklist_dir))
+        for f in blacklist_files:
+            dependencies += ('../' + blacklist_dir + '/' + f + '\n')
+        inputs_file.write(dependencies)
+
     # Package up the resulting trimmed install/ directory.
     if create_tar:
         tarball_name = package_name + '-' + host
