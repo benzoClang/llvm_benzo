@@ -1123,9 +1123,9 @@ def install_wrappers(llvm_install_path):
 # Normalize host libraries (libLLVM, libclang, libc++, libc++abi) so that there
 # is just one library, whose SONAME entry matches the actual name.
 def normalize_llvm_host_libs(install_dir, host, version):
-    libs = {'libLLVM': 'libLLVM-{version}svn.so',
-            'libclang': 'libclang.so.{version}svn',
-            'libclang_cxx': 'libclang_cxx.so.{version}svn',
+    libs = {'libLLVM': 'libLLVM-{version}git.so',
+            'libclang': 'libclang.so.{version}git',
+            'libclang_cxx': 'libclang_cxx.so.{version}git',
             'libc++': 'libc++.so.{version}',
             'libc++abi': 'libc++abi.so.{version}'
            }
