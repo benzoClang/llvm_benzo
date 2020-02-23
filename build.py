@@ -321,6 +321,8 @@ def base_cmake_defines():
     # https://github.com/android-ndk/ndk/issues/574 - Don't depend on libtinfo.
     defines['LLVM_ENABLE_TERMINFO'] = 'OFF'
     defines['LLVM_ENABLE_THREADS'] = 'ON'
+    defines['LLVM_PARALLEL_COMPILE_JOBS'] = subprocess.getoutput("nproc")
+    defines['LLVM_PARALLEL_LINK_JOBS'] = subprocess.getoutput("nproc")
     defines['LLVM_USE_NEWPM'] = 'ON'
     defines['LLVM_LIBDIR_SUFFIX'] = '64'
     defines['LLVM_VERSION_PATCH'] = benzo_version.patch_level
