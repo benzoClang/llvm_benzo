@@ -814,6 +814,7 @@ def build_llvm(targets,
                build_dir,
                install_dir,
                build_name,
+               ccache=False,
                extra_defines=None,
                extra_env=None):
     cmake_defines = base_cmake_defines()
@@ -822,6 +823,11 @@ def build_llvm(targets,
     cmake_defines['LLVM_BUILD_LLVM_DYLIB'] = 'ON'
     cmake_defines['LLVM_BINUTILS_INCDIR'] = utils.android_path(
         'toolchain/llvm-project/llvm/tools/binutils/include')
+
+    if ccache:
+        cmake_defines['LLVM_CCACHE_BUILD'] = 'ON'
+    else:
+        cmake_defines['LLVM_CCACHE_BUILD'] = 'OFF'
 
     if extra_defines is not None:
         cmake_defines.update(extra_defines)
@@ -890,7 +896,7 @@ def get_shared_extra_defines():
 
 
 def build_stage1(stage1_install, build_name, stage1_targets,
-                 build_llvm_tools=False):
+                 ccache=False, build_llvm_tools=False):
     # Build/install the stage 1 toolchain
     cflags, ldflags = host_gcc_toolchain_flags(utils.build_os_type())
 
@@ -948,6 +954,7 @@ def build_stage1(stage1_install, build_name, stage1_targets,
         build_dir=stage1_path,
         install_dir=stage1_install,
         build_name=build_name,
+        ccache=ccache,
         extra_defines=stage1_extra_defines,
         extra_env=stage1_extra_env)
 
@@ -956,6 +963,7 @@ def build_stage2(stage1_install,
                  stage2_install,
                  stage2_targets,
                  build_name,
+                 ccache=False,
                  enable_assertions=False,
                  debug_build=False,
                  no_lto=False,
@@ -1054,6 +1062,7 @@ def build_stage2(stage1_install,
         build_dir=stage2_path,
         install_dir=stage2_install,
         build_name=build_name,
+        ccache=ccache,
         extra_defines=stage2_extra_defines,
         extra_env=stage2_extra_env)
 
@@ -1455,6 +1464,12 @@ def parse_args():
         default=False,
         help='Fail if expected PGO profile doesn\'t exist')
 
+    parser.add_argument(
+        '--ccache',
+        action='store_true',
+        default=False,
+        help='Enable the use of ccache during build')
+
     return parser.parse_args()
 
 
@@ -1468,6 +1483,7 @@ def main():
     do_strip = not args.no_strip
     do_strip_host_package = do_strip and not args.debug
     do_thinlto = not args.no_lto
+    do_ccache = args.ccache
 
     log_levels = [logging.INFO, logging.DEBUG]
     verbosity = min(args.verbose, len(log_levels) - 1)
@@ -1477,8 +1493,9 @@ def main():
     if not utils.host_is_linux():
         raise RuntimeError('Only building on Linux is supported')
 
-    logger().info('do_build=%r do_stage1=%r do_stage2=%r do_runtimes=%r do_package=%r do_thinlto=%r' %
-                  (do_build, do_stage1, do_stage2, do_runtimes, do_package, do_thinlto))
+    logger().info(
+        'do_build=%r do_stage1=%r do_stage2=%r do_runtimes=%r do_package=%r do_thinlto=%r do_ccache=%r' %
+        (do_build, do_stage1, do_stage2, do_runtimes, do_package, do_thinlto, do_ccache))
 
     stage1_install = utils.out_path('stage1-install')
     stage2_install = utils.out_path('stage2-install')
@@ -1492,7 +1509,7 @@ def main():
         if args.debug:
             stage1_targets = ANDROID_TARGETS
         build_stage1(stage1_install, args.build_name, stage1_targets,
-                     build_llvm_tools=stage1_build_llvm_tools)
+                     args.ccache, build_llvm_tools=stage1_build_llvm_tools)
 
     if do_build:
         if os.path.exists(stage2_install) and do_stage2:
@@ -1508,7 +1525,7 @@ def main():
 
         if do_stage2:
             build_stage2(stage1_install, stage2_install, ANDROID_TARGETS,
-                         args.build_name, args.enable_assertions,
+                         args.build_name, args.ccache, args.enable_assertions,
                          args.debug, args.no_lto, instrumented, profdata)
 
         if do_runtimes:
