@@ -985,10 +985,11 @@ def build_stage2(stage1_install,
 
     stage2_extra_defines['LLVM_ENABLE_LLD'] = 'ON'
 
-    # lld, lto and pgo instrumentation doesn't work together
-    # http://b/79419131
-    if not build_instrumented and not no_lto and not debug_build:
-        stage2_extra_defines['LLVM_ENABLE_LTO'] = 'Thin'
+    if no_lto:
+        stage2_extra_defines['LLVM_ENABLE_LTO'] = 'OFF'
+    else:
+        if not build_instrumented:
+            stage2_extra_defines['LLVM_ENABLE_LTO'] = 'Thin'
 
     # Build libFuzzer here to be exported for the host fuzzer builds.
     stage2_extra_defines['COMPILER_RT_BUILD_LIBFUZZER'] = 'ON'
@@ -1466,6 +1467,7 @@ def main():
     do_package = not args.skip_package
     do_strip = not args.no_strip
     do_strip_host_package = do_strip and not args.debug
+    do_thinlto = not args.no_lto
 
     log_levels = [logging.INFO, logging.DEBUG]
     verbosity = min(args.verbose, len(log_levels) - 1)
@@ -1475,8 +1477,8 @@ def main():
     if not utils.host_is_linux():
         raise RuntimeError('Only building on Linux is supported')
 
-    logger().info('do_build=%r do_stage1=%r do_stage2=%r do_runtimes=%r do_package=%r' %
-                  (do_build, do_stage1, do_stage2, do_runtimes, do_package))
+    logger().info('do_build=%r do_stage1=%r do_stage2=%r do_runtimes=%r do_package=%r do_thinlto=%r' %
+                  (do_build, do_stage1, do_stage2, do_runtimes, do_package, do_thinlto))
 
     stage1_install = utils.out_path('stage1-install')
     stage2_install = utils.out_path('stage2-install')
