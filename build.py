@@ -45,8 +45,6 @@ if ('USE_GOMA' in ORIG_ENV) and (ORIG_ENV['USE_GOMA'] == 'true'):
 BASE_TARGETS = 'X86'
 ANDROID_TARGETS = 'AArch64;ARM;BPF;X86'
 
-# We were using 10.8, but we need 10.9 to use ~type_info() from libcxx.
-MAC_MIN_VERSION = '10.9'
 
 def logger():
     """Returns the module level logger."""
@@ -330,11 +328,6 @@ def base_cmake_defines():
     defines['CLANG_VERSION_PATCHLEVEL'] = android_version.patch_level
     defines['CLANG_REPOSITORY_STRING'] = 'https://android.googlesource.com/toolchain/llvm-project'
     defines['BUG_REPORT_URL'] = 'https://github.com/android-ndk/ndk/issues'
-
-    if utils.host_is_darwin():
-        # This will be used to set -mmacosx-version-min. And helps to choose SDK.
-        # To specify a SDK, set CMAKE_OSX_SYSROOT or SDKROOT environment variable.
-        defines['CMAKE_OSX_DEPLOYMENT_TARGET'] = MAC_MIN_VERSION
 
     # http://b/111885871 - Disable building xray because of MacOS issues.
     defines['COMPILER_RT_BUILD_XRAY'] = 'OFF'
@@ -908,226 +901,9 @@ def build_llvm(targets,
         cmake_path=utils.llvm_path('llvm'))
 
 
-def windows_cflags():
-    cflags = ['--target=x86_64-pc-windows-gnu', '-D_LARGEFILE_SOURCE',
-              '-D_FILE_OFFSET_BITS=64', '-D_WIN32_WINNT=0x0600', '-DWINVER=0x0600',
-              '-D__MSVCRT_VERSION__=0x1400']
-
-    return cflags
-
-
-def build_libs_for_windows(libname,
-                           toolchain_dir,
-                           enable_assertions,
-                           install_dir):
-    cflags, ldflags = host_gcc_toolchain_flags('windows-x86')
-
-    cflags.extend(windows_cflags())
-
-    cmake_defines = dict()
-    cmake_defines['CMAKE_SYSTEM_NAME'] = 'Windows'
-    cmake_defines['CMAKE_SYSTEM_PROCESSOR'] = 'x86_64'
-    cmake_defines['CMAKE_C_COMPILER'] = os.path.join(
-        toolchain_dir, 'bin', 'clang')
-    cmake_defines['CMAKE_CXX_COMPILER'] = os.path.join(
-        toolchain_dir, 'bin', 'clang++')
-    cmake_defines['LLVM_CONFIG_PATH'] = os.path.join(
-        toolchain_dir, 'bin', 'llvm-config')
-    # To prevent cmake from checking libstdcxx version.
-    cmake_defines['LLVM_ENABLE_LIBCXX'] = 'ON'
-
-    windows_sysroot = utils.android_path('prebuilts', 'gcc', 'linux-x86', 'host',
-                                         'x86_64-w64-mingw32-4.8',
-                                         'x86_64-w64-mingw32')
-    update_cmake_sysroot_flags(cmake_defines, windows_sysroot)
-
-    # Build only the static library.
-    cmake_defines[libname.upper() + '_ENABLE_SHARED'] = 'OFF'
-
-    if enable_assertions:
-        cmake_defines[libname.upper() + '_ENABLE_ASSERTIONS'] = 'ON'
-
-    if libname == 'libcxx':
-        cmake_defines['LIBCXX_ENABLE_STATIC_ABI_LIBRARY'] = 'ON'
-        cmake_defines['LIBCXX_CXX_ABI'] = 'libcxxabi'
-        cmake_defines['LIBCXX_HAS_WIN32_THREAD_API'] = 'ON'
-
-        # Use cxxabi header from the source directory since it gets installed
-        # into install_dir only during libcxx's install step.  But use the
-        # library from install_dir.
-        cmake_defines['LIBCXX_CXX_ABI_INCLUDE_PATHS'] = utils.llvm_path('libcxxabi', 'include')
-        cmake_defines['LIBCXX_CXX_ABI_LIBRARY_PATH'] = os.path.join(install_dir, 'lib64')
-
-        # Disable libcxxabi visibility annotations since we're only building it
-        # statically.
-        cflags.append('-D_LIBCXXABI_DISABLE_VISIBILITY_ANNOTATIONS')
-
-    elif libname == 'libcxxabi':
-        cmake_defines['LIBCXXABI_ENABLE_NEW_DELETE_DEFINITIONS'] = 'OFF'
-        cmake_defines['LIBCXXABI_LIBCXX_INCLUDES'] = utils.llvm_path('libcxx', 'include')
-
-        # Disable libcxx visibility annotations and enable WIN32 threads.  These
-        # are needed because the libcxxabi build happens before libcxx and uses
-        # headers directly from the sources.
-        cflags.append('-D_LIBCPP_DISABLE_VISIBILITY_ANNOTATIONS')
-        cflags.append('-D_LIBCPP_HAS_THREAD_API_WIN32')
-
-    cmake_defines['CMAKE_INSTALL_PREFIX'] = install_dir
-    cmake_defines['CMAKE_C_FLAGS'] = ' '.join(cflags)
-    cmake_defines['CMAKE_CXX_FLAGS'] = ' '.join(cflags)
-    cmake_defines['CMAKE_EXE_LINKER_FLAGS'] = ' '.join(ldflags)
-    cmake_defines['CMAKE_SHARED_LINKER_FLAGS'] = ' '.join(ldflags)
-    cmake_defines['CMAKE_MODULE_LINKER_FLAGS'] = ' '.join(ldflags)
-
-    out_path = utils.out_path('lib', 'windows-' + libname)
-    if os.path.exists(out_path):
-        utils.rm_tree(out_path)
-
-    invoke_cmake(out_path=out_path,
-                 defines=cmake_defines,
-                 env=dict(ORIG_ENV),
-                 cmake_path=utils.llvm_path(libname),
-                 install=True)
-
-
-def build_llvm_for_windows(stage1_install,
-                           targets,
-                           enable_assertions,
-                           build_dir,
-                           install_dir,
-                           build_name):
-
-    # Build and install libcxxabi and libcxx and use them to build Clang.
-    build_libs_for_windows('libcxxabi',
-                           stage1_install,
-                           enable_assertions,
-                           install_dir)
-
-    build_libs_for_windows('libcxx',
-                           stage1_install,
-                           enable_assertions,
-                           install_dir)
-
-    # Write a NATIVE.cmake in windows_path that contains the compilers used
-    # to build native tools such as llvm-tblgen and llvm-config.  This is
-    # used below via the CMake variable CROSS_TOOLCHAIN_FLAGS_NATIVE.
-    cc = os.path.join(stage1_install, 'bin', 'clang')
-    cxx = os.path.join(stage1_install, 'bin', 'clang++')
-    check_create_path(build_dir)
-    native_cmake_file_path = os.path.join(build_dir, 'NATIVE.cmake')
-    native_cmake_text = ('set(CMAKE_C_COMPILER {cc})\n'
-                         'set(CMAKE_CXX_COMPILER {cxx})\n'
-                         'set(LLVM_ENABLE_PROJECTS "clang;lldb" CACHE STRING "" FORCE)\n'
-                         'set(LLDB_DISABLE_PYTHON "ON" CACHE STRING "" FORCE)\n'
-                         'set(LLDB_DISABLE_CURSES "ON" CACHE STRING "" FORCE)\n'
-                         'set(LLDB_DISABLE_LIBEDIT "ON" CACHE STRING "" FORCE)\n'
-                        ).format(cc=cc, cxx=cxx)
-
-    with open(native_cmake_file_path, 'w') as native_cmake_file:
-        native_cmake_file.write(native_cmake_text)
-
-    # Extra cmake defines to use while building for Windows
-    windows_extra_defines = dict()
-    windows_extra_defines['CMAKE_C_COMPILER'] = cc
-    windows_extra_defines['CMAKE_CXX_COMPILER'] = cxx
-    windows_extra_defines['CMAKE_SYSTEM_NAME'] = 'Windows'
-    windows_extra_defines['CMAKE_SYSTEM_PROCESSOR'] = 'x86_64'
-    # Don't build compiler-rt, libcxx etc. for Windows
-    windows_extra_defines['LLVM_BUILD_RUNTIME'] = 'OFF'
-    # Build clang-tidy/clang-format for Windows.
-    windows_extra_defines['LLVM_TOOL_CLANG_TOOLS_EXTRA_BUILD'] = 'ON'
-    windows_extra_defines['LLVM_TOOL_OPENMP_BUILD'] = 'OFF'
-    # Don't build tests for Windows.
-    windows_extra_defines['LLVM_INCLUDE_TESTS'] = 'OFF'
-    # Use libc++ for Windows.
-    windows_extra_defines['LLVM_ENABLE_LIBCXX'] = 'ON'
-
-    windows_extra_defines['LLVM_ENABLE_PROJECTS'] = 'clang;clang-tools-extra;lld;lldb'
-
-    windows_sysroot = utils.android_path('prebuilts', 'gcc', 'linux-x86',
-                                         'host', 'x86_64-w64-mingw32-4.8',
-                                         'x86_64-w64-mingw32')
-    update_cmake_sysroot_flags(windows_extra_defines, windows_sysroot)
-
-    # Set CMake path, toolchain file for native compilation (to build tablegen
-    # etc).  Also disable libfuzzer build during native compilation.
-    windows_extra_defines['CROSS_TOOLCHAIN_FLAGS_NATIVE'] = \
-        '-DCMAKE_PREFIX_PATH=' + cmake_prebuilt_bin_dir() + ';' + \
-        '-DCOMPILER_RT_BUILD_LIBFUZZER=OFF;'+ \
-        '-DCMAKE_TOOLCHAIN_FILE=' + native_cmake_file_path + ';' + \
-        '-DLLVM_ENABLE_LIBCXX=ON;' + \
-        '-DCMAKE_BUILD_WITH_INSTALL_RPATH=TRUE;' + \
-        '-DCMAKE_INSTALL_RPATH=' + os.path.join(stage1_install, 'lib64')
-
-    if enable_assertions:
-        windows_extra_defines['LLVM_ENABLE_ASSERTIONS'] = 'ON'
-
-    cflags, ldflags = host_gcc_toolchain_flags('windows-x86')
-    cflags.extend(windows_cflags())
-
-    windows_extra_env = dict()
-
-    set_lldb_flags(install_dir, 'windows-x86', windows_extra_defines, windows_extra_env)
-    cflags.append('-DMS_WIN64')
-
-    cxxflags = list(cflags)
-
-    # Use -fuse-cxa-atexit to allow static TLS destructors.  This is needed for
-    # clang-tools-extra/clangd/Context.cpp
-    cxxflags.append('-fuse-cxa-atexit')
-
-    # Explicitly add the path to libc++ headers.  We don't need to configure
-    # options like visibility annotations, win32 threads etc. because the
-    # __generated_config header in the patch captures all the options used when
-    # building libc++.
-    cxxflags.extend(('-I', os.path.join(install_dir, 'include', 'c++', 'v1')))
-
-    ldflags.extend((
-        '-Wl,--dynamicbase',
-        '-Wl,--nxcompat',
-        # Use ucrt to find locale functions needed by libc++.
-        '-lucrt', '-lucrtbase',
-        # Use static-libgcc to avoid runtime dependence on libgcc_eh.
-        '-static-libgcc',
-        # pthread is needed by libgcc_eh.
-        '-lpthread',
-        # Add path to libc++, libc++abi.
-        '-L', os.path.join(install_dir, 'lib64')))
-
-    ldflags.append('-Wl,--high-entropy-va')
-
-    # Include zlib's header and library path
-    zlib_path = utils.android_path('prebuilts', 'clang', 'host', 'windows-x86',
-                                   'toolchain-prebuilts', 'zlib')
-    zlib_inc = os.path.join(zlib_path, 'include')
-    zlib_lib = os.path.join(zlib_path, 'lib')
-
-    cflags.extend(['-I', zlib_inc])
-    cxxflags.extend(['-I', zlib_inc])
-    ldflags.extend(['-L', zlib_lib])
-
-    windows_extra_defines['CMAKE_ASM_FLAGS'] = ' '.join(cflags)
-    windows_extra_defines['CMAKE_C_FLAGS'] = ' '.join(cflags)
-    windows_extra_defines['CMAKE_CXX_FLAGS'] = ' '.join(cxxflags)
-    windows_extra_defines['CMAKE_EXE_LINKER_FLAGS'] = ' '.join(ldflags)
-    windows_extra_defines['CMAKE_SHARED_LINKER_FLAGS'] = ' '.join(ldflags)
-    windows_extra_defines['CMAKE_MODULE_LINKER_FLAGS'] = ' '.join(ldflags)
-
-    build_llvm(
-        targets=targets,
-        build_dir=build_dir,
-        install_dir=install_dir,
-        build_name=build_name,
-        extra_defines=windows_extra_defines,
-        extra_env=windows_extra_env)
-
-
 def host_sysroot():
-    if utils.host_is_darwin():
-        return ""
-    else:
-        return utils.android_path('prebuilts/gcc', utils.build_os_type(),
-                                  'host/x86_64-linux-glibc2.17-4.8/sysroot')
+    return utils.android_path('prebuilts/gcc', utils.build_os_type(),
+                              'host/x86_64-linux-glibc2.17-4.8/sysroot')
 
 
 def host_gcc_toolchain_flags(host_os, is_32_bit=False):
@@ -1139,23 +915,14 @@ def host_gcc_toolchain_flags(host_os, is_32_bit=False):
     cflags = [debug_prefix_flag()]
     ldflags = []
 
-    if host_os == 'darwin-x86':
-        return cflags, ldflags
-
-    # GCC toolchain flags for Linux and Windows
-    if host_os == 'linux-x86':
-        gccRoot = utils.android_path('prebuilts/gcc', utils.build_os_type(),
+    # GCC toolchain flags
+    gccRoot = utils.android_path('prebuilts/gcc', utils.build_os_type(),
                                      'host/x86_64-linux-glibc2.17-4.8')
-        gccTriple = 'x86_64-linux'
-        gccVersion = '4.8.3'
+    gccTriple = 'x86_64-linux'
+    gccVersion = '4.8.3'
 
-        # gcc-toolchain is only needed for Linux
-        cflags.append('--gcc-toolchain={gccRoot}')
-    elif host_os == 'windows-x86':
-        gccRoot = utils.android_path('prebuilts/gcc', utils.build_os_type(),
-                                     'host/x86_64-w64-mingw32-4.8')
-        gccTriple = 'x86_64-w64-mingw32'
-        gccVersion = '4.8.3'
+    # gcc-toolchain is only needed for Linux
+    cflags.append('--gcc-toolchain={gccRoot}')
 
     cflags.append('-B{gccRoot}/{gccTriple}/bin')
 
@@ -1203,8 +970,7 @@ def build_stage1(stage1_install, build_name, stage1_targets,
 
     update_cmake_sysroot_flags(stage1_extra_defines, host_sysroot())
 
-    if not utils.host_is_darwin():
-        stage1_extra_defines['LLVM_ENABLE_LLD'] = 'ON'
+    stage1_extra_defines['LLVM_ENABLE_LLD'] = 'ON'
 
     if build_llvm_tools:
         stage1_extra_defines['LLVM_BUILD_TOOLS'] = 'ON'
@@ -1221,18 +987,9 @@ def build_stage1(stage1_install, build_name, stage1_targets,
 
     # Make libc++.so a symlink to libc++.so.x instead of a linker script that
     # also adds -lc++abi.  Statically link libc++abi to libc++ so it is not
-    # necessary to pass -lc++abi explicitly.  This is needed only for Linux.
-    if utils.host_is_linux():
-        stage1_extra_defines['LIBCXX_ENABLE_ABI_LINKER_SCRIPT'] = 'OFF'
-        stage1_extra_defines['LIBCXX_ENABLE_STATIC_ABI_LIBRARY'] = 'ON'
-
-    # Do not build compiler-rt for Darwin.  We don't ship host (or any
-    # prebuilt) runtimes for Darwin anyway.  Attempting to build these will
-    # fail compilation of lib/builtins/atomic_*.c that only get built for
-    # Darwin and fail compilation due to us using the bionic version of
-    # stdatomic.h.
-    if utils.host_is_darwin():
-        stage1_extra_defines['LLVM_BUILD_EXTERNAL_COMPILER_RT'] = 'ON'
+    # necessary to pass -lc++abi explicitly.
+    stage1_extra_defines['LIBCXX_ENABLE_ABI_LINKER_SCRIPT'] = 'OFF'
+    stage1_extra_defines['LIBCXX_ENABLE_STATIC_ABI_LIBRARY'] = 'ON'
 
     # Don't build libfuzzer as part of the first stage build.
     stage1_extra_defines['COMPILER_RT_BUILD_LIBFUZZER'] = 'OFF'
@@ -1260,39 +1017,28 @@ def build_stage1(stage1_install, build_name, stage1_targets,
 
 
 def set_lldb_flags(install_dir, host, defines, env):
-    if host == 'windows-x86':
-        build_os = 'linux-x86'
-    else:
-        build_os = host
+    build_os = host
 
     swig_root = utils.android_path('prebuilts', 'swig', build_os)
     defines['SWIG_EXECUTABLE'] = os.path.join(swig_root, 'bin', 'swig')
     env['SWIG_LIB'] = os.path.join(swig_root, 'share', 'swig', '3.0.12')
 
-    if host != 'darwin-x86':
-        defines['PYTHON_EXECUTABLE'] = utils.android_path('prebuilts', 'python',
-                                        'linux-x86', 'bin', 'python2.7')
+    defines['PYTHON_EXECUTABLE'] = utils.android_path('prebuilts', 'python',
+                                    'linux-x86', 'bin', 'python2.7')
 
-    if host == 'linux-x86':
-        python_root = utils.android_path('prebuilts', 'python', host)
-        defines['PYTHON_LIBRARY'] = os.path.join(python_root, 'lib', 'libpython2.7.so')
-        defines['PYTHON_INCLUDE_DIR'] = os.path.join(python_root, 'include', 'python2.7')
-    elif host == 'windows-x86':
-        defines['PYTHON_HOME'] = utils.android_path('prebuilts', 'python', host, 'x64')
+    python_root = utils.android_path('prebuilts', 'python', host)
+    defines['PYTHON_LIBRARY'] = os.path.join(python_root, 'lib', 'libpython2.7.so')
+    defines['PYTHON_INCLUDE_DIR'] = os.path.join(python_root, 'include', 'python2.7')
     defines['LLDB_RELOCATABLE_PYTHON'] = 'ON'
 
-    if host == 'darwin-x86':
-        defines['LLDB_NO_DEBUGSERVER'] = 'ON'
-
-    if host == 'linux-x86':
-        libedit_root = utils.android_path('prebuilts', 'libedit', host)
-        libedit_lib = os.path.join(libedit_root, 'lib', 'libedit.so.0')
-        libedit_include = os.path.join(libedit_root, 'include')
-        defines['libedit_INCLUDE_DIRS'] = libedit_include
-        defines['libedit_LIBRARIES'] = libedit_lib
-        lib_dir = os.path.join(install_dir, 'lib64')
-        check_create_path(lib_dir)
-        shutil.copy2(libedit_lib, lib_dir)
+    libedit_root = utils.android_path('prebuilts', 'libedit', host)
+    libedit_lib = os.path.join(libedit_root, 'lib', 'libedit.so.0')
+    libedit_include = os.path.join(libedit_root, 'include')
+    defines['libedit_INCLUDE_DIRS'] = libedit_include
+    defines['libedit_LIBRARIES'] = libedit_lib
+    lib_dir = os.path.join(install_dir, 'lib64')
+    check_create_path(lib_dir)
+    shutil.copy2(libedit_lib, lib_dir)
 
 
 def build_stage2(stage1_install,
@@ -1327,20 +1073,15 @@ def build_stage2(stage1_install,
 
     update_cmake_sysroot_flags(stage2_extra_defines, host_sysroot())
 
-    if not utils.host_is_darwin():
-        stage2_extra_defines['LLVM_ENABLE_LLD'] = 'ON'
+    stage2_extra_defines['LLVM_ENABLE_LLD'] = 'ON'
 
-        # lld, lto and pgo instrumentation doesn't work together
-        # http://b/79419131
-        if not build_instrumented and not no_lto and not debug_build:
-            stage2_extra_defines['LLVM_ENABLE_LTO'] = 'Thin'
+    # lld, lto and pgo instrumentation doesn't work together
+    # http://b/79419131
+    if not build_instrumented and not no_lto and not debug_build:
+        stage2_extra_defines['LLVM_ENABLE_LTO'] = 'Thin'
 
-    # Build libFuzzer here to be exported for the host fuzzer builds. libFuzzer
-    # is not currently supported on Darwin.
-    if utils.host_is_darwin():
-        stage2_extra_defines['COMPILER_RT_BUILD_LIBFUZZER'] = 'OFF'
-    else:
-        stage2_extra_defines['COMPILER_RT_BUILD_LIBFUZZER'] = 'ON'
+    # Build libFuzzer here to be exported for the host fuzzer builds.
+    stage2_extra_defines['COMPILER_RT_BUILD_LIBFUZZER'] = 'ON'
 
     if enable_assertions:
         stage2_extra_defines['LLVM_ENABLE_ASSERTIONS'] = 'ON'
@@ -1377,18 +1118,9 @@ def build_stage2(stage1_install,
 
     # Make libc++.so a symlink to libc++.so.x instead of a linker script that
     # also adds -lc++abi.  Statically link libc++abi to libc++ so it is not
-    # necessary to pass -lc++abi explicitly.  This is needed only for Linux.
-    if utils.host_is_linux():
-        stage2_extra_defines['LIBCXX_ENABLE_STATIC_ABI_LIBRARY'] = 'ON'
-        stage2_extra_defines['LIBCXX_ENABLE_ABI_LINKER_SCRIPT'] = 'OFF'
-
-    # Do not build compiler-rt for Darwin.  We don't ship host (or any
-    # prebuilt) runtimes for Darwin anyway.  Attempting to build these will
-    # fail compilation of lib/builtins/atomic_*.c that only get built for
-    # Darwin and fail compilation due to us using the bionic version of
-    # stdatomic.h.
-    if utils.host_is_darwin():
-        stage2_extra_defines['LLVM_BUILD_EXTERNAL_COMPILER_RT'] = 'ON'
+    # necessary to pass -lc++abi explicitly.
+    stage2_extra_defines['LIBCXX_ENABLE_STATIC_ABI_LIBRARY'] = 'ON'
+    stage2_extra_defines['LIBCXX_ENABLE_ABI_LINKER_SCRIPT'] = 'OFF'
 
     # Point CMake to the libc++ from stage1.  It is possible that once built,
     # the newly-built libc++ may override this because of the rpath pointing to
@@ -1426,9 +1158,7 @@ def build_runtimes(toolchain, args=None):
     else:
         build_crts(toolchain, version)
         build_crts(toolchain, version, ndk_cxx=True)
-        # 32-bit host crts are not needed for Darwin
-        if utils.host_is_linux():
-            build_crts_host_i686(toolchain, version)
+        build_crts_host_i686(toolchain, version)
     if args is not None and args.skip_libfuzzers:
         logger().info('Skip libfuzzers')
     else:
@@ -1487,17 +1217,12 @@ def install_wrappers(llvm_install_path):
 # Normalize host libraries (libLLVM, libclang, libc++, libc++abi) so that there
 # is just one library, whose SONAME entry matches the actual name.
 def normalize_llvm_host_libs(install_dir, host, version):
-    if host == 'linux-x86':
-        libs = {'libLLVM': 'libLLVM-{version}svn.so',
-                'libclang': 'libclang.so.{version}svn',
-                'libclang_cxx': 'libclang_cxx.so.{version}svn',
-                'libc++': 'libc++.so.{version}',
-                'libc++abi': 'libc++abi.so.{version}'
-               }
-    else:
-        libs = {'libc++': 'libc++.{version}.dylib',
-                'libc++abi': 'libc++abi.{version}.dylib'
-               }
+    libs = {'libLLVM': 'libLLVM-{version}svn.so',
+            'libclang': 'libclang.so.{version}svn',
+            'libclang_cxx': 'libclang_cxx.so.{version}svn',
+            'libc++': 'libc++.so.{version}',
+            'libc++abi': 'libc++abi.so.{version}'
+           }
 
     def getVersions(libname):
         if not libname.startswith('libc++'):
@@ -1570,28 +1295,11 @@ def install_license_files(install_dir):
         notice_file.write('\n'.join(notices))
 
 
-def install_winpthreads(bin_dir, lib_dir):
-    """Installs the winpthreads runtime to the Windows bin and lib directory."""
-    lib_name = 'libwinpthread-1.dll'
-    mingw_dir = utils.android_path(
-        'prebuilts/gcc/linux-x86/host/x86_64-w64-mingw32-4.8',
-        'x86_64-w64-mingw32')
-    lib_path = os.path.join(mingw_dir, 'bin', lib_name)
-
-    lib_install = os.path.join(lib_dir, lib_name)
-    install_file(lib_path, lib_install)
-
-    bin_install = os.path.join(bin_dir, lib_name)
-    install_file(lib_path, bin_install)
-
-
-def remove_static_libraries(static_lib_dir, necessary_libs=None):
-    if not necessary_libs:
-        necessary_libs = {}
+def remove_static_libraries(static_lib_dir):
     if os.path.isdir(static_lib_dir):
         lib_files = os.listdir(static_lib_dir)
         for lib_file in lib_files:
-            if lib_file.endswith('.a') and lib_file not in necessary_libs:
+            if lib_file.endswith('.a'):
                 static_library = os.path.join(static_lib_dir, lib_file)
                 remove(static_library)
 
@@ -1600,29 +1308,7 @@ def get_package_install_path(host, package_name):
     return utils.out_path('install', host, package_name)
 
 
-def install_lldb_for_windows(install_dir):
-    # Python package path is not correctly set when cross compiling.
-    # Moves them to the right place before upstream fixes it.
-    site_packages_dir = os.path.join(install_dir, 'lib/site-packages')
-    shutil.move(os.path.join(install_dir, 'lib/python2.7/site-packages'),
-                site_packages_dir)
-    shutil.rmtree(os.path.join(install_dir, 'lib/python2.7'))
-    os.remove(os.path.join(site_packages_dir, 'lldb', '_lldb.so'))
-    os.symlink('../../../bin/liblldb.dll',
-               os.path.join(site_packages_dir, 'lldb', '_lldb.pyd'))
-    os.remove(os.path.join(site_packages_dir, 'lldb', 'lldb-argdumper'))
-    os.symlink('../../../bin/lldb-argdumper.exe',
-               os.path.join(site_packages_dir, 'lldb', 'lldb-argdumper.exe'))
-
-    # Installs python for lldb.
-    python_dll = utils.android_path('prebuilts', 'python',
-                                    'windows-x86', 'x64', 'python27.dll')
-    shutil.copy(python_dll, os.path.join(install_dir, 'bin'))
-
-
 def package_toolchain(build_dir, build_name, host, dist_dir, strip=True, create_tar=True):
-    is_windows = host == 'windows-x86-64'
-    is_linux = host == 'linux-x86'
     package_name = 'clang-' + build_name
     version = extract_clang_version(build_dir)
 
@@ -1637,67 +1323,50 @@ def package_toolchain(build_dir, build_name, host, dist_dir, strip=True, create_
     # First copy over the entire set of output objects.
     shutil.copytree(build_dir, install_dir, symlinks=True)
 
-    ext = '.exe' if is_windows else ''
-    shlib_ext = '.dll' if is_windows else '.so' if is_linux else '.dylib'
-
     # Next, we remove unnecessary binaries.
     necessary_bin_files = {
-        'clang' + ext,
-        'clang++' + ext,
-        'clang-' + version.major_version() + ext,
-        'clang-check' + ext,
-        'clang-cl' + ext,
-        'clang-format' + ext,
-        'clang-tidy' + ext,
-        'dsymutil' + ext,
-        'git-clang-format',  # No extension here
-        'ld.lld' + ext,
-        'ld64.lld' + ext,
-        'lld' + ext,
-        'lld-link' + ext,
-        'lldb' + ext,
-        'lldb-argdumper' + ext,
-        'llvm-addr2line' + ext,
-        'llvm-ar' + ext,
-        'llvm-as' + ext,
-        'llvm-cfi-verify' + ext,
-        'llvm-config' + ext,
-        'llvm-cov' + ext,
-        'llvm-dis' + ext,
-        'llvm-lib' + ext,
-        'llvm-link' + ext,
-        'llvm-modextract' + ext,
-        'llvm-nm' + ext,
-        'llvm-objcopy' + ext,
-        'llvm-objdump' + ext,
-        'llvm-profdata' + ext,
-        'llvm-ranlib' + ext,
-        'llvm-rc' + ext,
-        'llvm-readelf' + ext,
-        'llvm-readobj' + ext,
-        'llvm-size' + ext,
-        'llvm-strings' + ext,
-        'llvm-strip' + ext,
-        'llvm-symbolizer' + ext,
-        'sancov' + ext,
-        'sanstats' + ext,
-        'scan-build' + ext,
-        'scan-view' + ext,
+        'clang',
+        'clang++',
+        'clang-' + version.major_version(),
+        'clang-check',
+        'clang-cl',
+        'clang-format',
+        'clang-tidy',
+        'dsymutil',
+        'git-clang-format',
+        'ld.lld',
+        'ld64.lld',
+        'lld',
+        'lld-link',
+        'lldb',
+        'lldb-argdumper',
+        'llvm-addr2line',
+        'llvm-ar',
+        'llvm-as',
+        'llvm-cfi-verify',
+        'llvm-config',
+        'llvm-cov',
+        'llvm-dis',
+        'llvm-lib',
+        'llvm-link',
+        'llvm-modextract',
+        'llvm-nm',
+        'llvm-objcopy',
+        'llvm-objdump',
+        'llvm-profdata',
+        'llvm-ranlib',
+        'llvm-rc',
+        'llvm-readelf',
+        'llvm-readobj',
+        'llvm-size',
+        'llvm-strings',
+        'llvm-strip',
+        'llvm-symbolizer',
+        'sancov',
+        'sanstats',
+        'scan-build',
+        'scan-view',
     }
-
-    if is_windows:
-        install_lldb_for_windows(install_dir)
-        windows_blacklist_bin_files = {
-            'clang-' + version.major_version() + ext,
-            'scan-build' + ext,
-            'scan-view' + ext,
-        }
-        windows_additional_bin_files = {
-            'liblldb' + shlib_ext,
-            'python27' + shlib_ext
-        }
-        necessary_bin_files -= windows_blacklist_bin_files
-        necessary_bin_files |= windows_additional_bin_files
 
     # scripts that should not be stripped
     script_bins = {
@@ -1722,29 +1391,10 @@ def package_toolchain(build_dir, build_name, host, dist_dir, strip=True, create_
         if not os.path.isfile(os.path.join(bin_dir, necessary_bin_file)):
             raise RuntimeError('Did not find %s in %s' % (necessary_bin_file, bin_dir))
 
-
-    if is_windows:
-        windows_necessary_lib_files = {
-            'libc++.a',
-            'libc++abi.a',
-            'LLVMgold' + shlib_ext,
-            'libwinpthread-1' + shlib_ext,
-        }
-        # For Windows, add other relevant libraries.
-        install_winpthreads(bin_dir, lib_dir)
-        # Next, we remove unnecessary static libraries.
-        remove_static_libraries(lib_dir, windows_necessary_lib_files)
-        # Check necessary Windows lib files exist.
-        for necessary_lib_file in windows_necessary_lib_files:
-            if not os.path.isfile(os.path.join(lib_dir, necessary_lib_file)):
-                raise RuntimeError('Did not find %s under lib64' % necessary_lib_file)
-
-    if not is_windows:
-        # Remove unnecessary static libraries.
-        remove_static_libraries(lib_dir)
-        install_wrappers(install_dir)
-        normalize_llvm_host_libs(install_dir, host, version)
-
+    # Remove unnecessary static libraries.
+    remove_static_libraries(lib_dir)
+    install_wrappers(install_dir)
+    normalize_llvm_host_libs(install_dir, host, version)
 
     # Next, we copy over stdatomic.h and bits/stdatomic.h from bionic.
     libc_include_path = utils.android_path('bionic', 'libc', 'include')
@@ -1759,7 +1409,6 @@ def package_toolchain(build_dir, build_name, host, dist_dir, strip=True, create_
         os.mkdir(bits_install_path)
     bits_stdatomic_path = utils.android_path(libc_include_path, 'bits', 'stdatomic.h')
     install_file(bits_stdatomic_path, bits_install_path)
-
 
     # Install license files as NOTICE in the toolchain install dir.
     install_license_files(install_dir)
@@ -1780,8 +1429,7 @@ def package_toolchain(build_dir, build_name, host, dist_dir, strip=True, create_
 
 
 def parse_args():
-    known_platforms = ('linux', 'windows')
-    known_platforms_str = ', '.join(known_platforms)
+    known_platforms = ('linux')
 
     # Simple argparse.Action to allow comma-separated values (e.g.
     # --option=val1,val2)
@@ -1907,13 +1555,6 @@ def parse_args():
         help='Skip the lldb server libraries')
 
     parser.add_argument(
-        '--no-build',
-        action=CommaSeparatedListAction,
-        default=list(),
-        help='Don\'t build toolchain for specified platforms.  Choices: ' + \
-            known_platforms_str)
-
-    parser.add_argument(
         '--check-pgo-profile',
         action='store_true',
         default=False,
@@ -1932,37 +1573,32 @@ def main():
     do_strip = not args.no_strip
     do_strip_host_package = do_strip and not args.debug
 
-    need_host = utils.host_is_darwin() or ('linux' not in args.no_build)
-    need_windows = utils.host_is_linux() and \
-        ('windows' not in args.no_build)
-
     log_levels = [logging.INFO, logging.DEBUG]
     verbosity = min(args.verbose, len(log_levels) - 1)
     log_level = log_levels[verbosity]
     logging.basicConfig(level=log_level)
 
-    logger().info('do_build=%r do_stage1=%r do_stage2=%r do_runtimes=%r do_package=%r need_windows=%r' %
-                  (do_build, do_stage1, do_stage2, do_runtimes, do_package, need_windows))
+    if not utils.host_is_linux():
+        raise RuntimeError('Only building on Linux is supported')
+
+    logger().info('do_build=%r do_stage1=%r do_stage2=%r do_runtimes=%r do_package=%r' %
+                  (do_build, do_stage1, do_stage2, do_runtimes, do_package))
 
     stage1_install = utils.out_path('stage1-install')
     stage2_install = utils.out_path('stage2-install')
-    windows64_install = utils.out_path('windows-x86-64-install')
 
     # Build the stage1 Clang for the build host
-    instrumented = utils.host_is_linux() and args.build_instrumented
+    instrumented = args.build_instrumented
 
     if do_stage1:
-        # Windows libs are built with stage1 toolchain. llvm-config is required.
-        stage1_build_llvm_tools = instrumented or \
-                                  (do_build and need_windows) or \
-                                  args.debug
+        stage1_build_llvm_tools = instrumented or args.debug
         stage1_targets = BASE_TARGETS
         if args.debug:
             stage1_targets = ANDROID_TARGETS
         build_stage1(stage1_install, args.build_name, stage1_targets,
                      build_llvm_tools=stage1_build_llvm_tools)
 
-    if do_build and need_host:
+    if do_build:
         if os.path.exists(stage2_install) and do_stage2:
             utils.rm_tree(stage2_install)
 
@@ -1979,41 +1615,20 @@ def main():
                          args.build_name, args.enable_assertions,
                          args.debug, args.no_lto, instrumented, profdata)
 
-        if utils.host_is_linux() and do_runtimes:
+        if do_runtimes:
             runtimes_toolchain = stage2_install
             if args.debug:
                 runtimes_toolchain = stage1_install
             build_runtimes(runtimes_toolchain, args)
 
-    if do_build and need_windows:
-        if os.path.exists(windows64_install):
-            utils.rm_tree(windows64_install)
-
-        windows64_path = utils.out_path('windows-x86-64')
-        build_llvm_for_windows(
-            stage1_install=stage1_install,
-            targets=ANDROID_TARGETS,
-            enable_assertions=args.enable_assertions,
-            build_dir=windows64_path,
-            install_dir=windows64_install,
-            build_name=args.build_name)
-
     dist_dir = ORIG_ENV.get('DIST_DIR', utils.out_path())
-    if do_package and need_host:
+    if do_package:
         package_toolchain(
             stage2_install,
             args.build_name,
             utils.build_os_type(),
             dist_dir,
             strip=do_strip_host_package)
-
-    if do_package and need_windows:
-        package_toolchain(
-            windows64_install,
-            args.build_name,
-            'windows-x86-64',
-            dist_dir,
-            strip=do_strip)
 
     return 0
 
