@@ -539,6 +539,7 @@ def build_crts(toolchain, clang_version, ndk_cxx=False):
         cflags.extend('-isystem ' + d for d in libcxx_header_dirs(ndk_cxx))
 
         cflags.append('-funwind-tables')
+        cflags.append('-Wno-unused-command-line-argument')
 
         crt_defines['CMAKE_C_FLAGS'] = ' '.join(cflags)
         crt_defines['CMAKE_ASM_FLAGS'] = ' '.join(cflags)
@@ -598,6 +599,7 @@ def build_libfuzzers(toolchain, clang_version, ndk_cxx=False):
         # Skip implicit C++ headers and explicitly include C++ header paths.
         cflags.append('-nostdinc++')
         cflags.extend('-isystem ' + d for d in libcxx_header_dirs(ndk_cxx))
+        cflags.append('-Wno-unused-command-line-argument')
 
         libfuzzer_defines['CMAKE_ASM_FLAGS'] = ' '.join(cflags)
         libfuzzer_defines['CMAKE_C_FLAGS'] = ' '.join(cflags)
@@ -705,6 +707,7 @@ def build_libomp(toolchain, clang_version, ndk_cxx=False, is_shared=False):
         cflags.extend('-isystem ' + d for d in libcxx_header_dirs(ndk_cxx))
 
         cflags.append('-fPIC')
+        cflags.append('-Wno-unused-command-line-argument')
 
         libomp_path = utils.out_path('lib', 'libomp-' + arch)
         if ndk_cxx:
@@ -777,6 +780,7 @@ def build_crts_host_i686(toolchain, clang_version):
 
     cflags.append('--target=i386-linux-gnu')
     cflags.append('-march=i686')
+    cflags.append('-Wno-unused-command-line-argument')
 
     crt_defines['LLVM_CONFIG_PATH'] = llvm_config
     crt_defines['COMPILER_RT_INCLUDE_TESTS'] = 'ON'
@@ -1036,6 +1040,16 @@ def build_stage2(stage1_install,
         stage2_extra_defines['LLVM_PROFDATA_FILE'] = profdata_file
         cflags.append('-Wno-profile-instr-out-of-date')
         cflags.append('-Wno-profile-instr-unprofiled')
+
+    # Disable some warnings for openmp
+    openmp_cflags = (
+        '-Wno-c99-extensions',
+        '-Wno-deprecated-copy',
+        '-Wno-gnu-anonymous-struct',
+        '-Wno-missing-field-initializers',
+        '-Wno-non-c-typedef-for-linkage',
+        '-Wno-vla-extension')
+    stage2_extra_defines['LIBOMP_CXXFLAGS'] = ' '.join(openmp_cflags)
 
     # Make libc++.so a symlink to libc++.so.x instead of a linker script that
     # also adds -lc++abi.  Statically link libc++abi to libc++ so it is not
