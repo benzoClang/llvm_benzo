@@ -20,7 +20,6 @@ import argparse
 import datetime
 import glob
 import logging
-import multiprocessing
 import os
 import shutil
 import string
@@ -750,69 +749,6 @@ def build_libomp(toolchain, clang_version, ndk_cxx=False, is_shared=False):
         shutil.copy2(src_lib, os.path.join(dst_dir, libname))
 
 
-def build_lldb_server(toolchain, clang_version, ndk_cxx=False):
-    llvm_config = os.path.join(toolchain, 'bin', 'llvm-config')
-    for (arch, llvm_triple, lldb_defines,
-         cflags) in cross_compile_configs(toolchain, platform=(not ndk_cxx),
-                                          static=True): # pylint: disable=not-an-iterable
-
-        logger().info('Building lldb for %s (ndk_cxx? %s)', arch, ndk_cxx)
-        # Skip implicit C++ headers and explicitly include C++ header paths.
-        cflags.append('-nostdinc++')
-        cflags.extend('-isystem ' + d for d in libcxx_header_dirs(ndk_cxx))
-
-        lldb_path = utils.out_path('lib', 'lldb-server-' + arch)
-        if ndk_cxx:
-            lldb_path += '-ndk-cxx'
-
-        lldb_defines['ANDROID'] = '1'
-        lldb_defines['LLVM_CONFIG_PATH'] = llvm_config
-
-        lldb_defines['CMAKE_C_FLAGS'] = ' '.join(cflags)
-        lldb_defines['CMAKE_ASM_FLAGS'] = ' '.join(cflags)
-        lldb_defines['CMAKE_CXX_FLAGS'] = ' '.join(cflags)
-
-        lldb_defines.update(base_cmake_defines())
-
-        # lldb depends on support libraries.
-        lldb_defines['LLVM_ENABLE_PROJECTS'] = 'clang;lldb'
-
-        lldb_defines['LLVM_ENABLE_LIBCXX'] = 'ON'
-        lldb_defines['CMAKE_SYSTEM_NAME'] = 'Android'
-        lldb_defines['CMAKE_CROSSCOMPILING'] = 'True'
-        lldb_defines['LLVM_TABLEGEN'] = os.path.join(toolchain, 'bin', 'llvm-tblgen')
-        lldb_defines['CLANG_TABLEGEN'] = os.path.join(toolchain, '..', 'stage2', 'bin', 'clang-tblgen')
-        lldb_defines['LLDB_TABLEGEN'] = os.path.join(toolchain, '..', 'stage2', 'bin', 'lldb-tblgen')
-        lldb_defines['LLVM_DEFAULT_TARGET_TRIPLE'] = llvm_triple
-        lldb_defines['LLVM_HOST_TRIPLE'] = llvm_triple
-        lldb_defines['LLVM_TARGET_ARCH'] = arch
-
-        lldb_env = dict(ORIG_ENV)
-
-        lldb_cmake_path = utils.llvm_path('llvm')
-        invoke_cmake(
-            out_path=lldb_path,
-            defines=lldb_defines,
-            env=lldb_env,
-            cmake_path=lldb_cmake_path,
-            target='lldb-server',
-            install=False)
-
-        # We need to install manually.
-        libname = 'lldb-server'
-        src_lib = os.path.join(lldb_path, 'bin', libname)
-        triple_arch = arch_from_triple(llvm_triple)
-        if ndk_cxx:
-            dst_subdir = os.path.join('runtimes_ndk_cxx', triple_arch)
-        else:
-            dst_subdir = clang_resource_dir(clang_version.long_version(),
-                                            triple_arch)
-        dst_dir = os.path.join(toolchain, dst_subdir)
-
-        check_create_path(dst_dir)
-        shutil.copy2(src_lib, os.path.join(dst_dir, libname))
-
-
 def build_crts_host_i686(toolchain, clang_version):
     logger().info('Building compiler-rt for host-i686')
 
@@ -1016,31 +952,6 @@ def build_stage1(stage1_install, build_name, stage1_targets,
         extra_env=stage1_extra_env)
 
 
-def set_lldb_flags(install_dir, host, defines, env):
-    build_os = host
-
-    swig_root = utils.android_path('prebuilts', 'swig', build_os)
-    defines['SWIG_EXECUTABLE'] = os.path.join(swig_root, 'bin', 'swig')
-    env['SWIG_LIB'] = os.path.join(swig_root, 'share', 'swig', '3.0.12')
-
-    defines['PYTHON_EXECUTABLE'] = utils.android_path('prebuilts', 'python',
-                                    'linux-x86', 'bin', 'python2.7')
-
-    python_root = utils.android_path('prebuilts', 'python', host)
-    defines['PYTHON_LIBRARY'] = os.path.join(python_root, 'lib', 'libpython2.7.so')
-    defines['PYTHON_INCLUDE_DIR'] = os.path.join(python_root, 'include', 'python2.7')
-    defines['LLDB_RELOCATABLE_PYTHON'] = 'ON'
-
-    libedit_root = utils.android_path('prebuilts', 'libedit', host)
-    libedit_lib = os.path.join(libedit_root, 'lib', 'libedit.so.0')
-    libedit_include = os.path.join(libedit_root, 'include')
-    defines['libedit_INCLUDE_DIRS'] = libedit_include
-    defines['libedit_LIBRARIES'] = libedit_lib
-    lib_dir = os.path.join(install_dir, 'lib64')
-    check_create_path(lib_dir)
-    shutil.copy2(libedit_lib, lib_dir)
-
-
 def build_stage2(stage1_install,
                  stage2_install,
                  stage2_targets,
@@ -1067,9 +978,6 @@ def build_stage2(stage1_install,
     stage2_extra_defines['SANITIZER_ALLOW_CXXABI'] = 'OFF'
     stage2_extra_defines['OPENMP_ENABLE_OMPT_TOOLS'] = 'FALSE'
     stage2_extra_defines['LIBOMP_ENABLE_SHARED'] = 'FALSE'
-
-    set_lldb_flags(stage2_install, utils.build_os_type(), stage2_extra_defines,
-                   stage2_extra_env)
 
     update_cmake_sysroot_flags(stage2_extra_defines, host_sysroot())
 
@@ -1170,10 +1078,6 @@ def build_runtimes(toolchain, args=None):
         build_libomp(toolchain, version)
         build_libomp(toolchain, version, ndk_cxx=True)
         build_libomp(toolchain, version, ndk_cxx=True, is_shared=True)
-    if args is not None and args.skip_lldb:
-        logger().info('Skip lldb server')
-    else:
-        build_lldb_server(toolchain, version, ndk_cxx=True)
     # Bug: http://b/64037266. `strtod_l` is missing in NDK r15. This will break
     # libcxx build.
     # build_libcxx(toolchain, version)
@@ -1338,8 +1242,6 @@ def package_toolchain(build_dir, build_name, host, dist_dir, strip=True, create_
         'ld64.lld',
         'lld',
         'lld-link',
-        'lldb',
-        'lldb-argdumper',
         'llvm-addr2line',
         'llvm-ar',
         'llvm-as',
@@ -1548,11 +1450,6 @@ def parse_args():
         action='store_true',
         default=False,
         help='Skip the sanitizer libraries')
-    parser.add_argument(
-        '--skip-lldb',
-        action='store_true',
-        default=False,
-        help='Skip the lldb server libraries')
 
     parser.add_argument(
         '--check-pgo-profile',
