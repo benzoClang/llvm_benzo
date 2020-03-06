@@ -826,6 +826,8 @@ def build_llvm(targets,
 
     if ccache:
         cmake_defines['LLVM_CCACHE_BUILD'] = 'ON'
+        cmake_defines['CCACHE_PROGRAM'] = utils.android_path(
+                      'prebuilts/build-tools', utils.build_os_type(), 'bin/ccache')
     else:
         cmake_defines['LLVM_CCACHE_BUILD'] = 'OFF'
 
