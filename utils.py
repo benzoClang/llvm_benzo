@@ -16,6 +16,8 @@
 #
 # pylint: disable=not-callable
 
+import datetime
+import logging
 import os
 import shutil
 import stat
@@ -49,28 +51,13 @@ def android_path(*args):
     return os.path.realpath(os.path.join(THIS_DIR, '../../', *args))
 
 
-def llvm_path(*args):
-    return os.path.realpath(os.path.join(THIS_DIR, '../llvm-project', *args))
-
-
 def out_path(*args):
     out_dir = os.environ.get('OUT_DIR', android_path('out'))
     return os.path.realpath(os.path.join(out_dir, *args))
 
 
-def build_os_type():
-    if sys.platform.startswith('linux'):
-        return 'linux-x86'
-    else:
-        return 'darwin-x86'
-
-
-def host_is_linux():
-    return build_os_type() == 'linux-x86'
-
-
-def host_is_darwin():
-    return build_os_type() == 'darwin-x86'
+def llvm_path(*args):
+    return os.path.realpath(os.path.join(THIS_DIR, '../llvm-project', *args))
 
 
 def yes_or_no(prompt, default=True):
@@ -86,6 +73,20 @@ def yes_or_no(prompt, default=True):
             return False
         else:
             print("Unrecognized reply, try again")
+
+
+def logger():
+    """Returns the module level logger."""
+    return logging.getLogger(__name__)
+
+
+def check_call(cmd, *args, **kwargs):
+    """subprocess.check_call with logging."""
+    logger().info('check_call:%s %s',
+                  datetime.datetime.now().strftime("%H:%M:%S"),
+                  subprocess.list2cmdline(cmd))
+    subprocess.check_call(cmd, *args, **kwargs)
+
 
 def check_call_d(args, stdout=None, stderr=None, cwd=None, dry_run=False):
     if not dry_run:

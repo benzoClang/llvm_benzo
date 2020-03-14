@@ -1,4 +1,3 @@
-#!/usr/bin/env python
 #
 # Copyright (C) 2020 The Android Open Source Project
 #
@@ -14,8 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 #
-"""Starts build.py with prebuilt python3."""
+"""Configs for the build."""
 
-import py3_utils
-
-py3_utils.run_with_py3('do_build.py')
+# This is the baseline stable version of Clang to start our stage-1 build.
+CLANG_PREBUILT_VERSION: str = 'clang-r370808'

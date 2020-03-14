@@ -20,6 +20,8 @@ import argparse
 import datetime
 import glob
 import logging
+import multiprocessing
+from pathlib import Path
 import os
 import shutil
 import string
@@ -29,6 +31,13 @@ import textwrap
 import utils
 
 import benzo_version
+import builders
+import configs
+import constants
+import hosts
+import paths
+import toolchains
+from typing import Dict, List
 from version import Version
 
 import mapfile
@@ -49,14 +58,6 @@ ANDROID_TARGETS = 'AArch64;ARM;BPF;X86'
 def logger():
     """Returns the module level logger."""
     return logging.getLogger(__name__)
-
-
-def check_call(cmd, *args, **kwargs):
-    """subprocess.check_call with logging."""
-    logger().info('check_call:%s %s',
-                  datetime.datetime.now().strftime("%H:%M:%S"),
-                  subprocess.list2cmdline(cmd))
-    subprocess.check_call(cmd, *args, **kwargs)
 
 
 def install_file(src, dst):
@@ -134,22 +135,13 @@ def support_headers():
     return os.path.join(ndk_base(), 'sources', 'android', 'support', 'include')
 
 
-# This is the baseline stable version of Clang to start our stage-1 build.
-def clang_prebuilt_version():
-    return 'clang-r370808'
-
-
 def clang_prebuilt_base_dir():
     return utils.android_path('prebuilts/clang/host',
-                              utils.build_os_type(), clang_prebuilt_version())
+                              hosts.build_host().os_tag, constants.CLANG_PREBUILT_VERSION)
 
 
 def clang_prebuilt_bin_dir():
     return utils.android_path(clang_prebuilt_base_dir(), 'bin')
-
-
-def clang_prebuilt_lib_dir():
-    return utils.android_path(clang_prebuilt_base_dir(), 'lib64')
 
 
 def arch_from_triple(triple):
@@ -183,11 +175,11 @@ def libcxx_header_dirs(ndk_cxx):
 
 
 def cmake_bin_path():
-    return utils.android_path('prebuilts/cmake', utils.build_os_type(), 'bin/cmake')
+    return utils.android_path('prebuilts/cmake', hosts.build_host().os_tag, 'bin/cmake')
 
 
 def ninja_bin_path():
-    return utils.android_path('prebuilts/build-tools', utils.build_os_type(), 'bin/ninja')
+    return utils.android_path('prebuilts/build-tools', hosts.build_host().os_tag, 'bin/ninja')
 
 
 def check_create_path(path):
@@ -206,7 +198,7 @@ def debug_prefix_flag():
 
 
 def go_bin_dir():
-    return utils.android_path('prebuilts/build-tools/linux-x86/go/bin')
+    return utils.android_path('prebuilts/build-tools', hosts.build_host().os_tag, 'go/bin')
 
 
 def create_sysroots():
@@ -274,7 +266,7 @@ def create_sysroots():
                         void _ZTIN10__cxxabiv121__vmi_class_type_infoE() {}
                         void _ZTISt9type_info() {}
                     """))
-                check_call([utils.out_path('stage2-install', 'bin', 'clang'),
+                utils.check_call([utils.out_path('stage2-install', 'bin', 'clang'),
                             '--target=' + target,
                             '-fuse-ld=lld', '-nostdlib', '-shared',
                             '-Wl,-soname,libc++.so',
@@ -330,7 +322,6 @@ def base_cmake_defines():
     defines['CLANG_VERSION_PATCHLEVEL'] = benzo_version.patch_level
     defines['CLANG_REPOSITORY_STRING'] = 'https://github.com/benzoClang/llvm-project'
     defines['CLANG_TC_DATE'] = datetime.datetime.now().strftime("%Y%m%d")
-    defines['CLANG_VENDOR'] = 'benzoClang'
     defines['TOOLCHAIN_REVISION_STRING'] = benzo_version.svn_revision
 
     # http://b/111885871 - Disable building xray because of MacOS issues.
@@ -358,10 +349,10 @@ def invoke_cmake(out_path, defines, env, cmake_path, target=None, install=True):
     else:
         ninja_target = []
 
-    check_call([cmake_bin_path()] + flags, cwd=out_path, env=env)
-    check_call([ninja_bin_path()] + ninja_target, cwd=out_path, env=env)
+    utils.check_call([cmake_bin_path()] + flags, cwd=out_path, env=env)
+    utils.check_call([ninja_bin_path()] + ninja_target, cwd=out_path, env=env)
     if install:
-        check_call([ninja_bin_path(), 'install'], cwd=out_path, env=env)
+        utils.check_call([ninja_bin_path(), 'install'], cwd=out_path, env=env)
 
 
 def cross_compile_configs(toolchain, platform=False, static=False):
@@ -388,7 +379,7 @@ def cross_compile_configs(toolchain, platform=False, static=False):
         else:
             api_level = android_api(arch, platform)
         toolchain_root = utils.android_path('prebuilts/gcc',
-                                            utils.build_os_type())
+                                            hosts.build_host().os_tag)
         toolchain_bin = os.path.join(toolchain_root, toolchain_path, 'bin')
         sysroot = get_sysroot(ndk_arch, platform)
 
@@ -709,6 +700,7 @@ def build_libomp(toolchain, clang_version, ndk_cxx=False, is_shared=False):
 
         cflags.append('-fPIC')
         cflags.append('-Wno-unused-command-line-argument')
+        cflags.append('-Wno-non-c-typedef-for-linkage')
 
         libomp_path = utils.out_path('lib', 'libomp-' + arch)
         if ndk_cxx:
@@ -764,7 +756,7 @@ def build_crts_host_i686(toolchain, clang_version):
                                clang_version.long_version())
     crt_cmake_path = utils.llvm_path('compiler-rt')
 
-    cflags, ldflags = host_gcc_toolchain_flags(utils.build_os_type(), is_32_bit=True)
+    cflags, ldflags = host_gcc_toolchain_flags(hosts.build_host(), is_32_bit=True)
 
     crt_defines = base_cmake_defines()
     crt_defines['CMAKE_C_COMPILER'] = os.path.join(toolchain, 'bin',
@@ -819,22 +811,15 @@ def build_llvm(targets,
                build_dir,
                install_dir,
                build_name,
-               ccache=False,
                extra_defines=None,
                extra_env=None):
     cmake_defines = base_cmake_defines()
     cmake_defines['CMAKE_INSTALL_PREFIX'] = install_dir
     cmake_defines['LLVM_TARGETS_TO_BUILD'] = targets
     cmake_defines['LLVM_BUILD_LLVM_DYLIB'] = 'ON'
+    cmake_defines['CLANG_VENDOR'] = 'benzoClang'
     cmake_defines['LLVM_BINUTILS_INCDIR'] = utils.android_path(
         'toolchain/llvm-project/llvm/tools/binutils/include')
-
-    if ccache:
-        cmake_defines['LLVM_CCACHE_BUILD'] = 'ON'
-        cmake_defines['CCACHE_PROGRAM'] = utils.android_path(
-                      'prebuilts/build-tools', utils.build_os_type(), 'bin/ccache')
-    else:
-        cmake_defines['LLVM_CCACHE_BUILD'] = 'OFF'
 
     if extra_defines is not None:
         cmake_defines.update(extra_defines)
@@ -851,32 +836,26 @@ def build_llvm(targets,
 
 
 def host_sysroot():
-    return utils.android_path('prebuilts/gcc', utils.build_os_type(),
+    return utils.android_path('prebuilts/gcc', hosts.build_host().os_tag,
                               'host/x86_64-linux-glibc2.17-4.8/sysroot')
 
 
-def host_gcc_toolchain_flags(host_os, is_32_bit=False):
-    def formatFlags(flags, **values):
-        flagsStr = ' '.join(flags)
-        flagsStr = flagsStr.format(**values)
-        return flagsStr.split(' ')
+def host_gcc_toolchain_flags(host: hosts.Host, is_32_bit=False):
+    cflags: List[str] = [debug_prefix_flag()]
+    ldflags: List[str] = []
 
-    cflags = [debug_prefix_flag()]
-    ldflags = []
-
-    # GCC toolchain flags
-    gccRoot = utils.android_path('prebuilts/gcc', utils.build_os_type(),
+    gccRoot = utils.android_path('prebuilts/gcc', hosts.build_host().os_tag,
                                      'host/x86_64-linux-glibc2.17-4.8')
     gccTriple = 'x86_64-linux'
     gccVersion = '4.8.3'
 
     # gcc-toolchain is only needed for Linux
-    cflags.append('--gcc-toolchain={gccRoot}')
+    cflags.append(f'--gcc-toolchain={gccRoot}')
 
-    cflags.append('-B{gccRoot}/{gccTriple}/bin')
+    cflags.append(f'-B{gccRoot}/{gccTriple}/bin')
 
-    gccLibDir = '{gccRoot}/lib/gcc/{gccTriple}/{gccVersion}'
-    gccBuiltinDir = '{gccRoot}/{gccTriple}/lib64'
+    gccLibDir = f'{gccRoot}/lib/gcc/{gccTriple}/{gccVersion}'
+    gccBuiltinDir = f'{gccRoot}/{gccTriple}/lib64'
     if is_32_bit:
         gccLibDir += '/32'
         gccBuiltinDir = gccBuiltinDir.replace('lib64', 'lib32')
@@ -888,10 +867,6 @@ def host_gcc_toolchain_flags(host_os, is_32_bit=False):
                     '-fuse-ld=lld',
                    ))
 
-    cflags = formatFlags(cflags, gccRoot=gccRoot, gccTriple=gccTriple,
-                         gccVersion=gccVersion)
-    ldflags = formatFlags(ldflags, gccRoot=gccRoot, gccTriple=gccTriple,
-                          gccVersion=gccVersion)
     return cflags, ldflags
 
 
@@ -902,72 +877,77 @@ def get_shared_extra_defines():
     return extra_defines
 
 
-def build_stage1(stage1_install, build_name, stage1_targets,
-                 ccache=False, build_llvm_tools=False):
-    # Build/install the stage 1 toolchain
-    cflags, ldflags = host_gcc_toolchain_flags(utils.build_os_type())
+class Stage1Builder(builders.LLVMBuilder):
+    name: str = 'stage1'
+    install_dir: Path = paths.OUT_DIR / 'stage1-install'
+    ccache: bool = False
+    build_llvm_tools: bool = False
+    debug_stage2: bool = False
+    toolchain: toolchains.Toolchain = toolchains.PrebuiltToolchain()
+    config: configs.Config = configs.host_config()
 
-    stage1_path = utils.out_path('stage1')
+    @property
+    def llvm_targets(self) -> List[str]:  # type: ignore
+        if self.debug_stage2:
+            return ANDROID_TARGETS.split(';')
+        else:
+            return BASE_TARGETS.split(';')
 
-    stage1_extra_defines = get_shared_extra_defines()
-    stage1_extra_defines['CLANG_ENABLE_ARCMT'] = 'OFF'
-    stage1_extra_defines['CLANG_ENABLE_STATIC_ANALYZER'] = 'OFF'
-    stage1_extra_defines['CMAKE_C_COMPILER'] = os.path.join(
-        clang_prebuilt_bin_dir(), 'clang')
-    stage1_extra_defines['CMAKE_CXX_COMPILER'] = os.path.join(
-        clang_prebuilt_bin_dir(), 'clang++')
+    @property
+    def llvm_projects(self) -> List[str]:  # type: ignore
+        return ['clang', 'lld', 'libcxxabi', 'libcxx', 'compiler-rt']
 
-    update_cmake_sysroot_flags(stage1_extra_defines, host_sysroot())
+    @property
+    def additional_ldflags(self) -> List[str]:
+        # Point CMake to the libc++.so from the prebuilts.  Install an rpath
+        # to prevent linking with the newly-built libc++.so
+        lib_dir = self.toolchain.path / 'lib64'
+        return [f'-L{lib_dir}', f'-Wl,-rpath,{lib_dir}']
 
-    stage1_extra_defines['LLVM_ENABLE_LLD'] = 'ON'
+    @property
+    def cmake_defines(self) -> Dict[str, str]:
+        defines = super().cmake_defines
+        defines['LLVM_BUILD_RUNTIME'] = 'ON'
+        defines['CLANG_ENABLE_ARCMT'] = 'OFF'
+        defines['CLANG_ENABLE_STATIC_ANALYZER'] = 'OFF'
 
-    if build_llvm_tools:
-        stage1_extra_defines['LLVM_BUILD_TOOLS'] = 'ON'
-    else:
-        stage1_extra_defines['LLVM_BUILD_TOOLS'] = 'OFF'
+        defines['LLVM_ENABLE_LLD'] = 'ON'
 
-    # Have clang use libc++, ...
-    stage1_extra_defines['LLVM_ENABLE_LIBCXX'] = 'ON'
+        if self.ccache:
+            defines['LLVM_CCACHE_BUILD'] = 'ON'
+            defines['CCACHE_PROGRAM'] = utils.android_path(
+                                        'prebuilts/build-tools',
+                                        hosts.build_host().os_tag,
+                                        'bin/ccache')
+        else:
+            defines['LLVM_CCACHE_BUILD'] = 'OFF'
 
-    # ... and point CMake to the libc++.so from the prebuilts.  Install an rpath
-    # to prevent linking with the newly-built libc++.so
-    ldflags.append('-L' + clang_prebuilt_lib_dir())
-    ldflags.append('-Wl,-rpath,' + clang_prebuilt_lib_dir())
+        if self.build_llvm_tools:
+            defines['LLVM_BUILD_TOOLS'] = 'ON'
+        else:
+            defines['LLVM_BUILD_TOOLS'] = 'OFF'
 
-    # Make libc++.so a symlink to libc++.so.x instead of a linker script that
-    # also adds -lc++abi.  Statically link libc++abi to libc++ so it is not
-    # necessary to pass -lc++abi explicitly.
-    stage1_extra_defines['LIBCXX_ENABLE_ABI_LINKER_SCRIPT'] = 'OFF'
-    stage1_extra_defines['LIBCXX_ENABLE_STATIC_ABI_LIBRARY'] = 'ON'
+        # Make libc++.so a symlink to libc++.so.x instead of a linker script that
+        # also adds -lc++abi.  Statically link libc++abi to libc++ so it is not
+        # necessary to pass -lc++abi explicitly.
+        defines['LIBCXX_ENABLE_ABI_LINKER_SCRIPT'] = 'OFF'
+        defines['LIBCXX_ENABLE_STATIC_ABI_LIBRARY'] = 'ON'
 
-    # Don't build libfuzzer as part of the first stage build.
-    stage1_extra_defines['COMPILER_RT_BUILD_LIBFUZZER'] = 'OFF'
+        # Don't build libfuzzer as part of the first stage build.
+        defines['COMPILER_RT_BUILD_LIBFUZZER'] = 'OFF'
 
-    # Set the compiler and linker flags
-    stage1_extra_defines['CMAKE_ASM_FLAGS'] = ' '.join(cflags)
-    stage1_extra_defines['CMAKE_C_FLAGS'] = ' '.join(cflags)
-    stage1_extra_defines['CMAKE_CXX_FLAGS'] = ' '.join(cflags)
+        return defines
 
-    stage1_extra_defines['CMAKE_EXE_LINKER_FLAGS'] = ' '.join(ldflags)
-    stage1_extra_defines['CMAKE_SHARED_LINKER_FLAGS'] = ' '.join(ldflags)
-    stage1_extra_defines['CMAKE_MODULE_LINKER_FLAGS'] = ' '.join(ldflags)
-
-    stage1_extra_env = dict()
-    if USE_GOMA_FOR_STAGE1:
-        stage1_extra_env['USE_GOMA'] = 'true'
-
-    build_llvm(
-        targets=stage1_targets,
-        build_dir=stage1_path,
-        install_dir=stage1_install,
-        build_name=build_name,
-        ccache=ccache,
-        extra_defines=stage1_extra_defines,
-        extra_env=stage1_extra_env)
+    @property
+    def env(self) -> Dict[str, str]:
+        env = super().env
+        if USE_GOMA_FOR_STAGE1:
+            env['USE_GOMA'] = 'true'
+        return env
 
 
-def get_python_dir(host):
-    return utils.android_path('prebuilts', 'build-tools', host, 'python')
+def get_python_dir(host: hosts.Host):
+    return utils.android_path('prebuilts', 'build-tools', host.os_tag, 'python')
 
 
 def build_stage2(stage1_install,
@@ -980,7 +960,7 @@ def build_stage2(stage1_install,
                  no_lto=False,
                  build_instrumented=False,
                  profdata_file=None):
-    cflags, ldflags = host_gcc_toolchain_flags(utils.build_os_type())
+    cflags, ldflags = host_gcc_toolchain_flags(hosts.build_host())
 
     # Build/install the stage2 toolchain
     stage2_cc = os.path.join(stage1_install, 'bin', 'clang')
@@ -1007,8 +987,15 @@ def build_stage2(stage1_install,
     if no_lto:
         stage2_extra_defines['LLVM_ENABLE_LTO'] = 'OFF'
     else:
-        if not build_instrumented:
+        if not build_instrumented and not debug_build:
             stage2_extra_defines['LLVM_ENABLE_LTO'] = 'Thin'
+
+    if ccache:
+        stage2_extra_defines['LLVM_CCACHE_BUILD'] = 'ON'
+        stage2_extra_defines['CCACHE_PROGRAM'] = utils.android_path(
+                      'prebuilts/build-tools', hosts.build_host().os_tag, 'bin/ccache')
+    else:
+        stage2_extra_defines['LLVM_CCACHE_BUILD'] = 'OFF'
 
     # Build libFuzzer here to be exported for the host fuzzer builds.
     stage2_extra_defines['COMPILER_RT_BUILD_LIBFUZZER'] = 'ON'
@@ -1083,7 +1070,6 @@ def build_stage2(stage1_install,
         build_dir=stage2_path,
         install_dir=stage2_install,
         build_name=build_name,
-        ccache=ccache,
         extra_defines=stage2_extra_defines,
         extra_env=stage2_extra_env)
 
@@ -1129,7 +1115,7 @@ def install_wrappers(llvm_install_path):
     # based on the host.
     go_env = dict(os.environ)
     go_env['PATH'] = go_bin_dir() + ':' + go_env['PATH']
-    check_call([sys.executable, wrapper_build_script,
+    utils.check_call([sys.executable, wrapper_build_script,
                 '--config=android',
                 '--use_ccache=false',
                 '--use_llvm_next=true',
@@ -1164,7 +1150,7 @@ def install_wrappers(llvm_install_path):
 
 # Normalize host libraries (libLLVM, libclang, libc++, libc++abi) so that there
 # is just one library, whose SONAME entry matches the actual name.
-def normalize_llvm_host_libs(install_dir, host, version):
+def normalize_llvm_host_libs(install_dir, host: hosts.Host, version):
     libs = {'libLLVM': 'libLLVM-{version}git.so',
             'libclang': 'libclang.so.{version}git',
             'libclang_cxx': 'libclang_cxx.so.{version}git',
@@ -1201,7 +1187,7 @@ def normalize_llvm_host_libs(install_dir, host, version):
         # still need libc++.so or libc++.dylib symlinks for a subsequent stage1
         # build using these prebuilts (where CMake tries to find C++ atomics
         # support) to succeed.
-        libcxx_name = 'libc++.so' if host == 'linux-x86' else 'libc++.dylib'
+        libcxx_name = 'libc++.so' if host.is_linux else 'libc++.dylib'
         all_libs = [lib for lib in os.listdir(libdir) if
                     lib != libcxx_name and
                     (lib.startswith(libname + '.') or # so libc++abi is ignored
@@ -1247,11 +1233,11 @@ def remove_static_libraries(static_lib_dir):
                 remove(static_library)
 
 
-def get_package_install_path(host, package_name):
-    return utils.out_path('install', host, package_name)
+def get_package_install_path(host: hosts.Host, package_name):
+    return utils.out_path('install', host.os_tag, package_name)
 
 
-def package_toolchain(build_dir, build_name, host, dist_dir, strip=True, create_tar=True):
+def package_toolchain(build_dir, build_name, host: hosts.Host, dist_dir, strip=True, create_tar=True):
     package_name = 'clang-' + build_name
     version = extract_clang_version(build_dir)
 
@@ -1325,7 +1311,7 @@ def package_toolchain(build_dir, build_name, host, dist_dir, strip=True, create_
             if bin_filename not in necessary_bin_files:
                 remove(binary)
             elif strip and bin_filename not in script_bins:
-                check_call(['strip', binary])
+                utils.check_call(['strip', binary])
 
     # FIXME: check that all libs under lib64/clang/<version>/ are created.
     for necessary_bin_file in necessary_bin_files:
@@ -1362,11 +1348,11 @@ def package_toolchain(build_dir, build_name, host, dist_dir, strip=True, create_
 
     # Package up the resulting trimmed install/ directory.
     if create_tar:
-        tarball_name = package_name + '-' + host
+        tarball_name = package_name + '-' + host.os_tag
         package_path = os.path.join(dist_dir, tarball_name) + '.tar.bz2'
         logger().info('Packaging %s', package_path)
         args = ['tar', '-cjC', install_host_dir, '-f', package_path, package_name]
-        check_call(args)
+        utils.check_call(args)
 
 
 def parse_args():
@@ -1522,14 +1508,13 @@ def main():
     log_level = log_levels[verbosity]
     logging.basicConfig(level=log_level)
 
-    if not utils.host_is_linux():
+    if not hosts.build_host().is_linux:
         raise RuntimeError('Only building on Linux is supported')
 
     logger().info(
         'do_build=%r do_stage1=%r do_stage2=%r do_runtimes=%r do_package=%r do_thinlto=%r do_ccache=%r' %
         (do_build, do_stage1, do_stage2, do_runtimes, do_package, do_thinlto, do_ccache))
 
-    stage1_install = utils.out_path('stage1-install')
     stage2_install = utils.out_path('stage2-install')
 
     # Build the stage1 Clang for the build host
@@ -1537,11 +1522,13 @@ def main():
 
     if do_stage1:
         stage1_build_llvm_tools = instrumented or args.debug
-        stage1_targets = BASE_TARGETS
-        if args.debug:
-            stage1_targets = ANDROID_TARGETS
-        build_stage1(stage1_install, args.build_name, stage1_targets,
-                     args.ccache, build_llvm_tools=stage1_build_llvm_tools)
+        stage1 = Stage1Builder()
+        stage1.clang_vendor = 'benzoClang'
+        stage1.ccache = args.ccache
+        stage1.build_llvm_tools = stage1_build_llvm_tools
+        stage1.debug_stage2 = args.debug
+        stage1.build()
+        stage1_install = str(stage1.install_dir)
 
     if do_build:
         if os.path.exists(stage2_install) and do_stage2:
@@ -1571,7 +1558,7 @@ def main():
         package_toolchain(
             stage2_install,
             args.build_name,
-            utils.build_os_type(),
+            hosts.build_host(),
             dist_dir,
             strip=do_strip_host_package)
 

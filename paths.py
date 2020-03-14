@@ -1,4 +1,3 @@
-#!/usr/bin/env python
 #
 # Copyright (C) 2020 The Android Open Source Project
 #
@@ -14,8 +13,16 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 #
-"""Starts build.py with prebuilt python3."""
+"""Helpers for paths."""
 
-import py3_utils
+import os
+from pathlib import Path
 
-py3_utils.run_with_py3('do_build.py')
+import hosts
+
+ANDROID_DIR = Path(__file__).resolve().parents[2]
+OUT_DIR = Path(os.environ.get('OUT_DIR', ANDROID_DIR / 'out')).resolve()
+LLVM_PATH = ANDROID_DIR / 'toolchain' / 'llvm-project'
+
+CMAKE_BIN_PATH = ANDROID_DIR / 'prebuilts' / 'cmake' / hosts.build_host().os_tag / 'bin' / 'cmake'
+NINJA_BIN_PATH = ANDROID_DIR / 'prebuilts' / 'build-tools' / hosts.build_host().os_tag / 'bin' / 'ninja'
