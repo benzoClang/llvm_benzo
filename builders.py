@@ -18,7 +18,7 @@
 from pathlib import Path
 import datetime
 import os
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Set
 
 import benzo_version
 import configs
@@ -51,6 +51,7 @@ class CMakeBuilder(Builder):
 
     @property
     def target_os(self) -> hosts.Host:
+        """Returns the target platform for this builder."""
         return self.config.target_os
 
     @property
@@ -61,8 +62,8 @@ class CMakeBuilder(Builder):
     @property
     def cmake_defines(self) -> Dict[str, str]:
         """CMake defines."""
-        cflags = self.config.cflags + self.additional_cflags
-        ldflags = self.config.ldflags + self.additional_ldflags
+        cflags = self.config.cflags + self.cflags
+        ldflags = self.config.ldflags + self.ldflags
         cflags_str = ' '.join(cflags)
         ldflags_str = ' '.join(ldflags)
         defines: Dict[str, str] = {
@@ -92,14 +93,14 @@ class CMakeBuilder(Builder):
         return defines
 
     @property
-    def additional_cflags(self) -> List[str]:
+    def cflags(self) -> List[str]:
         """Additional cflags to use."""
         return []
 
     @property
-    def additional_ldflags(self) -> List[str]:
+    def ldflags(self) -> List[str]:
         """Additional ldflags to use."""
-        return []
+        return [f'-L{self.toolchain.lib_dir}']
 
     @property
     def env(self) -> Dict[str, str]:
@@ -141,9 +142,23 @@ class LLVMBuilder(CMakeBuilder):
     """Builder for LLVM project."""
 
     src_dir: Path = paths.LLVM_PATH / 'llvm'
+    config: configs.Config
     clang_vendor: str
-    llvm_projects: List[str]
-    llvm_targets: List[str]
+
+    @property
+    def llvm_projects(self) -> Set[str]:
+        """Returns enabled llvm projects."""
+        raise NotImplementedError()
+
+    @property
+    def llvm_targets(self) -> Set[str]:
+        """Returns llvm target archtects to build."""
+        raise NotImplementedError()
+
+    @property
+    def env(self) -> Dict[str, str]:
+        env = super().env
+        return env
 
     @property
     def cmake_defines(self) -> Dict[str, str]:
@@ -174,6 +189,10 @@ class LLVMBuilder(CMakeBuilder):
         defines['LLVM_BINUTILS_INCDIR'] = str(paths.ANDROID_DIR / 'toolchain' /
                                               'llvm-project' / 'llvm' / 'tools' /
                                               'binutils' / 'include')
-
         defines['LLVM_ENABLE_LIBCXX'] = 'ON'
+        defines['LLVM_BUILD_RUNTIME'] = 'ON'
+
+        defines['LLVM_ENABLE_LLD'] = 'ON'
+
+
         return defines

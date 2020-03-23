@@ -37,7 +37,7 @@ import constants
 import hosts
 import paths
 import toolchains
-from typing import Dict, List
+from typing import Dict, List, Optional, Set
 from version import Version
 
 import mapfile
@@ -72,14 +72,10 @@ def remove(path):
     os.remove(path)
 
 
-def extract_clang_version(clang_install):
-    version_file = os.path.join(clang_install, 'include', 'clang', 'Basic',
+def extract_clang_version(clang_install) -> Version:
+    version_file = (Path(clang_install) / 'include' / 'clang' / 'Basic' /
                                 'Version.inc')
     return Version(version_file)
-
-
-def extract_clang_long_version(clang_install):
-    return extract_clang_version(clang_install).long_version()
 
 
 def pgo_profdata_filename():
@@ -883,35 +879,33 @@ class Stage1Builder(builders.LLVMBuilder):
     ccache: bool = False
     build_llvm_tools: bool = False
     debug_stage2: bool = False
-    toolchain: toolchains.Toolchain = toolchains.PrebuiltToolchain()
+    toolchain: toolchains.Toolchain = toolchains.get_prebuilt_toolchain()
     config: configs.Config = configs.host_config()
 
     @property
-    def llvm_targets(self) -> List[str]:  # type: ignore
+    def llvm_targets(self) -> Set[str]:
         if self.debug_stage2:
-            return ANDROID_TARGETS.split(';')
+            return set(ANDROID_TARGETS.split(';'))
         else:
-            return BASE_TARGETS.split(';')
+            return set(BASE_TARGETS.split(';'))
 
     @property
-    def llvm_projects(self) -> List[str]:  # type: ignore
-        return ['clang', 'lld', 'libcxxabi', 'libcxx', 'compiler-rt']
+    def llvm_projects(self) -> Set[str]:
+        return {'clang', 'lld', 'libcxxabi', 'libcxx', 'compiler-rt'}
 
     @property
-    def additional_ldflags(self) -> List[str]:
+    def ldflags(self) -> List[str]:
+        ldflags = super().ldflags
         # Point CMake to the libc++.so from the prebuilts.  Install an rpath
         # to prevent linking with the newly-built libc++.so
-        lib_dir = self.toolchain.path / 'lib64'
-        return [f'-L{lib_dir}', f'-Wl,-rpath,{lib_dir}']
+        ldflags.append(f'-Wl,-rpath,{self.toolchain.lib_dir}')
+        return ldflags
 
     @property
     def cmake_defines(self) -> Dict[str, str]:
         defines = super().cmake_defines
-        defines['LLVM_BUILD_RUNTIME'] = 'ON'
         defines['CLANG_ENABLE_ARCMT'] = 'OFF'
         defines['CLANG_ENABLE_STATIC_ANALYZER'] = 'OFF'
-
-        defines['LLVM_ENABLE_LLD'] = 'ON'
 
         if self.ccache:
             defines['LLVM_CCACHE_BUILD'] = 'ON'
@@ -946,132 +940,121 @@ class Stage1Builder(builders.LLVMBuilder):
         return env
 
 
-def get_python_dir(host: hosts.Host):
-    return utils.android_path('prebuilts', 'build-tools', host.os_tag, 'python')
+class Stage2Builder(builders.LLVMBuilder):
+    name: str = 'stage2'
+    install_dir: Path = paths.OUT_DIR / 'stage2-install'
+    toolchain: toolchains.Toolchain = toolchains.build_toolchain_for_path(
+        Stage1Builder.install_dir)
+    config: configs.Config = configs.host_config()
+    ccache: bool = False
+    debug_build: bool = False
+    build_instrumented: bool = False
+    profdata_file: Optional[Path] = None
+    enable_assertions: bool = False
+    lto: bool = True
 
+    @property
+    def llvm_targets(self) -> Set[str]:
+        return set(ANDROID_TARGETS.split(';'))
 
-def build_stage2(stage1_install,
-                 stage2_install,
-                 stage2_targets,
-                 build_name,
-                 ccache=False,
-                 enable_assertions=False,
-                 debug_build=False,
-                 no_lto=False,
-                 build_instrumented=False,
-                 profdata_file=None):
-    cflags, ldflags = host_gcc_toolchain_flags(hosts.build_host())
+    @property
+    def llvm_projects(self) -> Set[str]:
+        proj = {'clang', 'lld', 'libcxxabi', 'libcxx', 'compiler-rt', 
+                'clang-tools-extra', 'openmp', 'polly'}
+        return proj
 
-    # Build/install the stage2 toolchain
-    stage2_cc = os.path.join(stage1_install, 'bin', 'clang')
-    stage2_cxx = os.path.join(stage1_install, 'bin', 'clang++')
-    stage2_path = utils.out_path('stage2')
+    @property
+    def env(self) -> Dict[str, str]:
+        env = super().env
+        # Point CMake to the libc++ from stage1.  It is possible that once built,
+        # the newly-built libc++ may override this because of the rpath pointing to
+        # $ORIGIN/../lib64.  That'd be fine because both libraries are built from
+        # the same sources.
+        env['LD_LIBRARY_PATH'] = str(self.toolchain.lib_dir)
+        return env
 
-    stage2_extra_defines = get_shared_extra_defines()
-    stage2_extra_env = dict()
+    @property
+    def ldflags(self) -> List[str]:
+        ldflags = super().ldflags
+        if self.build_instrumented:
+            # Building libcxx, libcxxabi with instrumentation causes linker errors
+            # because these are built with -nodefaultlibs and prevent libc symbols
+            # needed by libclang_rt.profile from being resolved.  Manually adding
+            # the libclang_rt.profile to linker flags fixes the issue.
+            resource_dir = self.toolchain.get_resource_dir()
+            ldflags.append(str(resource_dir / 'libclang_rt.profile-x86_64.a'))
+        return ldflags
 
-    stage2_extra_defines['LLVM_ENABLE_PROJECTS'] += ';clang-tools-extra;polly;openmp'
-    stage2_extra_defines['CMAKE_C_COMPILER'] = stage2_cc
-    stage2_extra_defines['CMAKE_CXX_COMPILER'] = stage2_cxx
-    stage2_extra_defines['LLVM_ENABLE_LIBCXX'] = 'ON'
-    stage2_extra_defines['SANITIZER_ALLOW_CXXABI'] = 'OFF'
-    stage2_extra_defines['OPENMP_ENABLE_OMPT_TOOLS'] = 'FALSE'
-    stage2_extra_defines['LIBOMP_ENABLE_SHARED'] = 'FALSE'
-    stage2_extra_defines['LLVM_POLLY_LINK_INTO_TOOLS'] = 'ON'
-    stage2_extra_defines['CLANG_DEFAULT_LINKER'] = 'lld'
+    @property
+    def cflags(self) -> List[str]:
+        cflags = super().cflags
+        if self.profdata_file:
+            cflags.append('-Wno-profile-instr-out-of-date')
+            cflags.append('-Wno-profile-instr-unprofiled')
+        return cflags
 
-    update_cmake_sysroot_flags(stage2_extra_defines, host_sysroot())
+    @property
+    def cmake_defines(self) -> Dict[str, str]:
+        defines = super().cmake_defines
+        defines['LLVM_ENABLE_LIBCXX'] = 'ON'
+        defines['SANITIZER_ALLOW_CXXABI'] = 'OFF'
+        defines['OPENMP_ENABLE_OMPT_TOOLS'] = 'FALSE'
+        defines['LIBOMP_ENABLE_SHARED'] = 'FALSE'
+        defines['LLVM_POLLY_LINK_INTO_TOOLS'] = 'ON'
+        defines['CLANG_DEFAULT_LINKER'] = 'lld'
 
-    stage2_extra_defines['LLVM_ENABLE_LLD'] = 'ON'
+        # lld, lto and pgo instrumentation doesn't work together
+        # http://b/79419131
+        if (self.lto and
+            not self.build_instrumented and
+            not self.debug_build):
+            defines['LLVM_ENABLE_LTO'] = 'Thin'
 
-    if no_lto:
-        stage2_extra_defines['LLVM_ENABLE_LTO'] = 'OFF'
-    else:
-        if not build_instrumented and not debug_build:
-            stage2_extra_defines['LLVM_ENABLE_LTO'] = 'Thin'
-
-    if ccache:
-        stage2_extra_defines['LLVM_CCACHE_BUILD'] = 'ON'
-        stage2_extra_defines['CCACHE_PROGRAM'] = utils.android_path(
+        if self.ccache:
+            defines['LLVM_CCACHE_BUILD'] = 'ON'
+            defines['CCACHE_PROGRAM'] = utils.android_path(
                       'prebuilts/build-tools', hosts.build_host().os_tag, 'bin/ccache')
-    else:
-        stage2_extra_defines['LLVM_CCACHE_BUILD'] = 'OFF'
+        else:
+            defines['LLVM_CCACHE_BUILD'] = 'OFF'
 
-    # Build libFuzzer here to be exported for the host fuzzer builds.
-    stage2_extra_defines['COMPILER_RT_BUILD_LIBFUZZER'] = 'ON'
+        # Build libFuzzer here to be exported for the host fuzzer builds.
+        defines['COMPILER_RT_BUILD_LIBFUZZER'] = 'ON'
 
-    if enable_assertions:
-        stage2_extra_defines['LLVM_ENABLE_ASSERTIONS'] = 'ON'
+        if self.enable_assertions:
+            defines['LLVM_ENABLE_ASSERTIONS'] = 'ON'
 
-    if debug_build:
-        stage2_extra_defines['CMAKE_BUILD_TYPE'] = 'Debug'
+        if self.debug_build:
+            defines['CMAKE_BUILD_TYPE'] = 'Debug'
 
-    if build_instrumented:
-        stage2_extra_defines['LLVM_BUILD_INSTRUMENTED'] = 'ON'
+        if self.build_instrumented:
+            defines['LLVM_BUILD_INSTRUMENTED'] = 'ON'
 
-        # llvm-profdata is only needed to finish CMake configuration
-        # (tools/clang/utils/perf-training/CMakeLists.txt) and not needed for
-        # build
-        llvm_profdata = os.path.join(stage1_install, 'bin', 'llvm-profdata')
-        stage2_extra_defines['LLVM_PROFDATA'] = llvm_profdata
+            # llvm-profdata is only needed to finish CMake configuration
+            # (tools/clang/utils/perf-training/CMakeLists.txt) and not needed for
+            # build
+            llvm_profdata = self.toolchain.path / 'bin' / 'llvm-profdata'
+            defines['LLVM_PROFDATA'] = str(llvm_profdata)
 
-        # Building libcxx, libcxxabi with instrumentation causes linker errors
-        # because these are built with -nodefaultlibs and prevent libc symbols
-        # needed by libclang_rt.profile from being resolved.  Manually adding
-        # the libclang_rt.profile to linker flags fixes the issue.
-        version = extract_clang_long_version(stage1_install)
-        resource_dir = clang_resource_dir(version, '')
-        ldflags.append(os.path.join(stage1_install, resource_dir,
-                                    'libclang_rt.profile-x86_64.a'))
+        if self.profdata_file:
+            if self.build_instrumented:
+                raise RuntimeError(
+                    'Cannot simultaneously instrument and use profiles')
+            defines['LLVM_PROFDATA_FILE'] = str(self.profdata_file)
 
-    if profdata_file:
-        if build_instrumented:
-            raise RuntimeError(
-                'Cannot simultaneously instrument and use profiles')
+        # Disable some warnings for openmp
+        openmp_cflags = (
+            '-Wno-c99-extensions',
+            '-Wno-deprecated-copy',
+            '-Wno-gnu-anonymous-struct',
+            '-Wno-missing-field-initializers',
+            '-Wno-non-c-typedef-for-linkage',
+            '-Wno-vla-extension')
+        defines['LIBOMP_CXXFLAGS'] = ' '.join(openmp_cflags)
 
-        stage2_extra_defines['LLVM_PROFDATA_FILE'] = profdata_file
-        cflags.append('-Wno-profile-instr-out-of-date')
-        cflags.append('-Wno-profile-instr-unprofiled')
+        defines['LIBCXX_ENABLE_STATIC_ABI_LIBRARY'] = 'ON'
+        defines['LIBCXX_ENABLE_ABI_LINKER_SCRIPT'] = 'OFF'
 
-    # Disable some warnings for openmp
-    openmp_cflags = (
-        '-Wno-c99-extensions',
-        '-Wno-deprecated-copy',
-        '-Wno-gnu-anonymous-struct',
-        '-Wno-missing-field-initializers',
-        '-Wno-non-c-typedef-for-linkage',
-        '-Wno-vla-extension')
-    stage2_extra_defines['LIBOMP_CXXFLAGS'] = ' '.join(openmp_cflags)
-
-    # Make libc++.so a symlink to libc++.so.x instead of a linker script that
-    # also adds -lc++abi.  Statically link libc++abi to libc++ so it is not
-    # necessary to pass -lc++abi explicitly.
-    stage2_extra_defines['LIBCXX_ENABLE_STATIC_ABI_LIBRARY'] = 'ON'
-    stage2_extra_defines['LIBCXX_ENABLE_ABI_LINKER_SCRIPT'] = 'OFF'
-
-    # Point CMake to the libc++ from stage1.  It is possible that once built,
-    # the newly-built libc++ may override this because of the rpath pointing to
-    # $ORIGIN/../lib64.  That'd be fine because both libraries are built from
-    # the same sources.
-    ldflags.append('-L' + os.path.join(stage1_install, 'lib64'))
-    stage2_extra_env['LD_LIBRARY_PATH'] = os.path.join(stage1_install, 'lib64')
-
-    # Set the compiler and linker flags
-    stage2_extra_defines['CMAKE_ASM_FLAGS'] = ' '.join(cflags)
-    stage2_extra_defines['CMAKE_C_FLAGS'] = ' '.join(cflags)
-    stage2_extra_defines['CMAKE_CXX_FLAGS'] = ' '.join(cflags)
-
-    stage2_extra_defines['CMAKE_EXE_LINKER_FLAGS'] = ' '.join(ldflags)
-    stage2_extra_defines['CMAKE_SHARED_LINKER_FLAGS'] = ' '.join(ldflags)
-    stage2_extra_defines['CMAKE_MODULE_LINKER_FLAGS'] = ' '.join(ldflags)
-
-    build_llvm(
-        targets=stage2_targets,
-        build_dir=stage2_path,
-        install_dir=stage2_install,
-        build_name=build_name,
-        extra_defines=stage2_extra_defines,
-        extra_env=stage2_extra_env)
+        return defines
 
 
 def build_runtimes(toolchain, args=None):
@@ -1534,15 +1517,17 @@ def main():
     # Build the stage1 Clang for the build host
     instrumented = args.build_instrumented
 
+    # llvm-config is required.
+    stage1_build_llvm_tools = instrumented or args.debug
+
+    stage1 = Stage1Builder()
+    stage1.clang_vendor = 'benzoClang'
+    stage1.ccache = args.ccache
+    stage1.build_llvm_tools = stage1_build_llvm_tools
+    stage1.debug_stage2 = args.debug
     if do_stage1:
-        stage1_build_llvm_tools = instrumented or args.debug
-        stage1 = Stage1Builder()
-        stage1.clang_vendor = 'benzoClang'
-        stage1.ccache = args.ccache
-        stage1.build_llvm_tools = stage1_build_llvm_tools
-        stage1.debug_stage2 = args.debug
         stage1.build()
-        stage1_install = str(stage1.install_dir)
+    stage1_install = str(stage1.install_dir)
 
     if do_build:
         if os.path.exists(stage2_install) and do_stage2:
@@ -1556,10 +1541,17 @@ def main():
             raise RuntimeError('Profdata file does not exist for ' +
                                profdata_filename)
 
+        stage2 = Stage2Builder()
+        stage2.clang_vendor = 'benzoClang'
+        stage2.ccache = args.ccache
+        stage2.debug_build = args.debug
+        stage2.enable_assertions = args.enable_assertions
+        stage2.lto = not args.no_lto
+        stage2.build_instrumented = instrumented
+        stage2.profdata_file = Path(profdata) if profdata else None
         if do_stage2:
-            build_stage2(stage1_install, stage2_install, ANDROID_TARGETS,
-                         args.build_name, args.ccache, args.enable_assertions,
-                         args.debug, args.no_lto, instrumented, profdata)
+            stage2.build()
+        stage2_install = str(stage2.install_dir)
 
         if do_runtimes:
             runtimes_toolchain = stage2_install
