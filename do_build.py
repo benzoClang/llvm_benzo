@@ -1190,6 +1190,7 @@ def normalize_llvm_host_libs(install_dir, host: hosts.Host, version):
         libcxx_name = 'libc++.so' if host.is_linux else 'libc++.dylib'
         all_libs = [lib for lib in os.listdir(libdir) if
                     lib != libcxx_name and
+                    not lib.endswith('.a') and # skip static host libraries
                     (lib.startswith(libname + '.') or # so libc++abi is ignored
                      lib.startswith(libname + '-'))]
 
@@ -1224,11 +1225,13 @@ def install_license_files(install_dir):
         notice_file.write('\n'.join(notices))
 
 
-def remove_static_libraries(static_lib_dir):
+def remove_static_libraries(static_lib_dir, necessary_libs=None):
+    if not necessary_libs:
+        necessary_libs = {}
     if os.path.isdir(static_lib_dir):
         lib_files = os.listdir(static_lib_dir)
         for lib_file in lib_files:
-            if lib_file.endswith('.a'):
+            if lib_file.endswith('.a') and lib_file not in necessary_libs:
                 static_library = os.path.join(static_lib_dir, lib_file)
                 remove(static_library)
 
@@ -1318,10 +1321,21 @@ def package_toolchain(build_dir, build_name, host: hosts.Host, dist_dir, strip=T
         if not os.path.isfile(os.path.join(bin_dir, necessary_bin_file)):
             raise RuntimeError('Did not find %s in %s' % (necessary_bin_file, bin_dir))
 
+    necessary_lib_files = {
+        'libc++.a',
+        'libc++abi.a',
+    }
+
     # Remove unnecessary static libraries.
-    remove_static_libraries(lib_dir)
+    remove_static_libraries(lib_dir, necessary_lib_files)
+
     install_wrappers(install_dir)
     normalize_llvm_host_libs(install_dir, host, version)
+
+    # Check necessary lib files exist.
+    for necessary_lib_file in necessary_lib_files:
+        if not os.path.isfile(os.path.join(lib_dir, necessary_lib_file)):
+            raise RuntimeError('Did not find %s in %s' % (necessary_lib_file, lib_dir))
 
     # Install license files as NOTICE in the toolchain install dir.
     install_license_files(install_dir)
