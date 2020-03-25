@@ -798,34 +798,6 @@ def build_crts_host_i686(toolchain, clang_version):
         cmake_path=crt_cmake_path)
 
 
-def build_llvm(targets,
-               build_dir,
-               install_dir,
-               build_name,
-               extra_defines=None,
-               extra_env=None):
-    cmake_defines = base_cmake_defines()
-    cmake_defines['CMAKE_INSTALL_PREFIX'] = install_dir
-    cmake_defines['LLVM_TARGETS_TO_BUILD'] = targets
-    cmake_defines['LLVM_BUILD_LLVM_DYLIB'] = 'ON'
-    cmake_defines['CLANG_VENDOR'] = 'benzoClang'
-    cmake_defines['LLVM_BINUTILS_INCDIR'] = utils.android_path(
-        'toolchain/llvm-project/llvm/tools/binutils/include')
-
-    if extra_defines is not None:
-        cmake_defines.update(extra_defines)
-
-    env = dict(ORIG_ENV)
-    if extra_env is not None:
-        env.update(extra_env)
-
-    invoke_cmake(
-        out_path=build_dir,
-        defines=cmake_defines,
-        env=env,
-        cmake_path=utils.llvm_path('llvm'))
-
-
 def host_sysroot():
     return utils.android_path('prebuilts/gcc', hosts.build_host().os_tag,
                               'host/x86_64-linux-glibc2.17-4.8/sysroot')
@@ -861,20 +833,13 @@ def host_gcc_toolchain_flags(host: hosts.Host, is_32_bit=False):
     return cflags, ldflags
 
 
-def get_shared_extra_defines():
-    extra_defines = dict()
-    extra_defines['LLVM_BUILD_RUNTIME'] = 'ON'
-    extra_defines['LLVM_ENABLE_PROJECTS'] = 'clang;lld;libcxxabi;libcxx;compiler-rt'
-    return extra_defines
-
-
 class Stage1Builder(builders.LLVMBuilder):
     name: str = 'stage1'
     toolchain_name: str = 'prebuilt'
     install_dir: Path = paths.OUT_DIR / 'stage1-install'
     build_llvm_tools: bool = False
     build_all_targets: bool = False
-    config: configs.Config = configs.host_config()
+    config_list: List[configs.Config] = [configs.host_config()]
 
     @property
     def llvm_targets(self) -> Set[str]:
@@ -924,17 +889,12 @@ class Stage1Builder(builders.LLVMBuilder):
             env['USE_GOMA'] = 'true'
         return env
 
-    @classmethod
-    def built_toolchain(cls) -> toolchains.Toolchain:
-        """The built (or skipped) toolchain."""
-        return toolchains.build_toolchain_for_path(cls.install_dir)
-
 
 class Stage2Builder(builders.LLVMBuilder):
     name: str = 'stage2'
     toolchain_name: str = 'stage1'
     install_dir: Path = paths.OUT_DIR / 'stage2-install'
-    config: configs.Config = configs.host_config()
+    config_list: List[configs.Config] = [configs.host_config()]
     remove_install_dir: bool = True
     debug_build: bool = False
     build_instrumented: bool = False
@@ -984,7 +944,6 @@ class Stage2Builder(builders.LLVMBuilder):
     @property
     def cmake_defines(self) -> Dict[str, str]:
         defines = super().cmake_defines
-        defines['LLVM_ENABLE_LIBCXX'] = 'ON'
         defines['SANITIZER_ALLOW_CXXABI'] = 'OFF'
         defines['OPENMP_ENABLE_OMPT_TOOLS'] = 'FALSE'
         defines['LIBOMP_ENABLE_SHARED'] = 'FALSE'
@@ -992,6 +951,7 @@ class Stage2Builder(builders.LLVMBuilder):
         defines['CLANG_DEFAULT_LINKER'] = 'lld'
 
         if (self.lto and
+                not self.build_instrumented and
                 not self.debug_build):
             defines['LLVM_ENABLE_LTO'] = 'Thin'
 
@@ -1502,6 +1462,7 @@ def main():
                               args.debug
 
     stage1 = Stage1Builder()
+    stage1.build_name = args.build_name
     stage1.clang_vendor = 'benzoClang'
     stage1.ccache = args.ccache
     stage1.build_llvm_tools = stage1_build_llvm_tools
@@ -1519,6 +1480,7 @@ def main():
                                profdata_filename)
 
         stage2 = Stage2Builder()
+        stage2.build_name = args.build_name
         stage2.clang_vendor = 'benzoClang'
         stage2.ccache = args.ccache
         stage2.debug_build = args.debug
@@ -1536,7 +1498,7 @@ def main():
             build_runtimes(runtimes_toolchain, args)
 
     dist_dir = ORIG_ENV.get('DIST_DIR', utils.out_path())
-    if do_package:
+    if do_package and need_host:
         package_toolchain(
             stage2_install,
             args.build_name,

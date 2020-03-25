@@ -17,3 +17,6 @@
 
 # This is the baseline stable version of Clang to start our stage-1 build.
 CLANG_PREBUILT_VERSION: str = 'clang-r377782d'
+
+# This is the ndk version used to build runtimes.
+NDK_VERSION: str = 'r20'

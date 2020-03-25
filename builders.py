@@ -38,31 +38,37 @@ def logger():
     """Returns the module level logger."""
     return logging.getLogger(__name__)
 
-
 class Builder:  # pylint: disable=too-few-public-methods
     """Base builder type."""
     name: str = ""
+    config_list: List[configs.Config]
 
+    def __init__(self) -> None:
+        self._config: configs.Config
+
+    @BuilderRegistry.register_and_build
     def build(self) -> None:
-        """Builds the target."""
-        raise NotImplementedError
+        """Builds all configs."""
+        for config in self.config_list:
+            self._config = config
+            self._build_config()
+
+    def _build_config(self) -> None:
+        raise NotImplementedError()
 
 
 class CMakeBuilder(Builder):
     """Builder for cmake targets."""
-    toolchain_name: str
     config: configs.Config
     src_dir: Path
     remove_cmake_cache: bool = False
     remove_install_dir: bool = False
     ninja_target: Optional[str] = None
-    install: bool = True
-    install_dir: Path
 
     @property
     def toolchain(self) -> toolchains.Toolchain:
         """Returns the toolchain used for this target."""
-        return toolchains.get_toolchain_by_name(self.toolchain_name)
+        raise NotImplementedError()
 
     @property
     def target_os(self) -> hosts.Host:
@@ -70,16 +76,21 @@ class CMakeBuilder(Builder):
         return self.config.target_os
 
     @property
-    def output_path(self) -> Path:
+    def install_dir(self) -> Path:
+        """Returns the path this target will be installed to."""
+        raise NotImplementedError()
+
+    @property
+    def output_dir(self) -> Path:
         """The path for intermediate results."""
         return paths.OUT_DIR / self.name
 
     @property
     def cmake_defines(self) -> Dict[str, str]:
         """CMake defines."""
-        cflags = self.config.cflags + self.cflags
-        cxxflags = self.config.cxxflags + self.cxxflags
-        ldflags = self.config.ldflags + self.ldflags
+        cflags = self._config.cflags + self.cflags
+        cxxflags = self._config.cxxflags + self.cxxflags
+        ldflags = self._config.ldflags + self.ldflags
         cflags_str = ' '.join(cflags)
         cxxflags_str = ' '.join(cxxflags)
         ldflags_str = ' '.join(ldflags)
@@ -105,19 +116,23 @@ class CMakeBuilder(Builder):
             'CMAKE_FIND_ROOT_PATH_MODE_PACKAGE': 'ONLY',
             'CMAKE_FIND_ROOT_PATH_MODE_PROGRAM': 'NEVER',
         }
-        if self.config.sysroot:
-            defines['CMAKE_SYSROOT'] = str(self.config.sysroot)
+        if self._config.sysroot:
+            defines['CMAKE_SYSROOT'] = str(self._config.sysroot)
         if self._is_cross_compiling():
             # Cross compiling
             defines['CMAKE_SYSTEM_NAME'] = self._get_cmake_system_name()
             defines['CMAKE_SYSTEM_PROCESSOR'] = 'x86_64'
+        if self._config.target_os == hosts.Host.Android:
+            defines['ANDROID'] = '1'
+            # Inhibit all of CMake's own NDK handling code.
+            defines['CMAKE_SYSTEM_VERSION'] = '1'
         return defines
 
     def _get_cmake_system_name(self) -> str:
-        return self.config.target_os.value.capitalize()
+        return self._config.target_os.value.capitalize()
 
     def _is_cross_compiling(self) -> bool:
-        return self.config.target_os != hosts.build_host()
+        return self._config.target_os != hosts.build_host()
 
     @property
     def cflags(self) -> List[str]:
@@ -151,10 +166,11 @@ class CMakeBuilder(Builder):
             if 'CMakeFiles' in dirs:
                 utils.rm_tree(os.path.join(dirpath, 'CMakeFiles'))
 
-    @BuilderRegistry.register_and_build
-    def build(self) -> None:
+    def _build_config(self) -> None:
+        logger().info('Building %s for %s', self.name, self._config)
+
         if self.remove_cmake_cache:
-            self._rm_cmake_cache(self.output_path)
+            self._rm_cmake_cache(self.output_dir)
 
         if self.remove_install_dir and self.install_dir.exists():
             shutil.rmtree(self.install_dir)
@@ -164,49 +180,32 @@ class CMakeBuilder(Builder):
         cmake_cmd.extend(f'-D{key}={val}' for key, val in self.cmake_defines.items())
         cmake_cmd.append(str(self.src_dir))
 
-        self.output_path.mkdir(parents=True, exist_ok=True)
+        self.output_dir.mkdir(parents=True, exist_ok=True)
 
-        utils.check_call(cmake_cmd, cwd=self.output_path, env=self.env)
+        utils.check_call(cmake_cmd, cwd=self.output_dir, env=self.env)
 
         ninja_cmd: List[str] = [str(paths.NINJA_BIN_PATH)]
         if self.ninja_target:
             ninja_cmd.append(self.ninja_target)
-        utils.check_call(ninja_cmd, cwd=self.output_path, env=self.env)
+        utils.check_call(ninja_cmd, cwd=self.output_dir, env=self.env)
 
-        if self.install:
-            utils.check_call([paths.NINJA_BIN_PATH, 'install'],
-                             cwd=self.output_path, env=self.env)
+        self.install()
+
+    def install(self) -> None:
+        """Installs built artifacts to install_dir."""
+        utils.check_call([paths.NINJA_BIN_PATH, 'install'],
+                         cwd=self.output_dir, env=self.env)
 
 
-class LLVMBuilder(CMakeBuilder):
-    """Builder for LLVM project."""
+class LLVMBaseBuilder(CMakeBuilder):  # pylint: disable=abstract-method
+    """Base builder for both llvm and individual runtime lib."""
 
-    src_dir: Path = paths.LLVM_PATH / 'llvm'
-    config: configs.Config
-    clang_vendor: str
-    ccache: bool = False
     enable_assertions: bool = False
-
-    @property
-    def llvm_projects(self) -> Set[str]:
-        """Returns enabled llvm projects."""
-        raise NotImplementedError()
-
-    @property
-    def llvm_targets(self) -> Set[str]:
-        """Returns llvm target archtects to build."""
-        raise NotImplementedError()
-
-    @property
-    def env(self) -> Dict[str, str]:
-        env = super().env
-        return env
+    ccache: bool = False
 
     @property
     def cmake_defines(self) -> Dict[str, str]:
         defines = super().cmake_defines
-
-        defines['LLVM_ENABLE_PROJECTS'] = ';'.join(self.llvm_projects)
 
         if self.ccache:
             defines['LLVM_CCACHE_BUILD'] = 'ON'
@@ -234,16 +233,81 @@ class LLVMBuilder(CMakeBuilder):
         # http://b/111885871 - Disable building xray because of MacOS issues.
         defines['COMPILER_RT_BUILD_XRAY'] = 'OFF'
 
+        # To prevent cmake from checking libstdcxx version.
+        defines['LLVM_ENABLE_LIBCXX'] = 'ON'
+
+        defines['LLVM_ENABLE_LLD'] = 'ON'
+
+        return defines
+
+
+class LLVMRuntimeBuilder(LLVMBaseBuilder):  # pylint: disable=abstract-method
+    """Base builder for llvm runtime libs."""
+
+    @property
+    def toolchain(self) -> toolchains.Toolchain:
+        """Returns the toolchain used for this target."""
+        return toolchains.get_runtime_toolchain()
+
+    @property
+    def output_dir(self) -> Path:
+        if self._config.target_os == hosts.Host.Android:
+            return paths.OUT_DIR / 'lib' / (f'{self.name}-{self._config.target_arch.value}')
+        return paths.OUT_DIR / 'lib' / (f'{self.name}-{self._config.target_os.value}')
+
+    @property
+    def cmake_defines(self) -> Dict[str, str]:
+        defines: Dict[str, str] = super().cmake_defines
+        defines['LLVM_CONFIG_PATH'] = str(self.toolchain.path /
+                                          'bin' / 'llvm-config')
+        return defines
+
+
+class LLVMBuilder(LLVMBaseBuilder):
+    """Builder for LLVM project."""
+
+    src_dir: Path = paths.LLVM_PATH / 'llvm'
+    config_list: List[configs.Config]
+    clang_vendor: str
+    enable_assertions: bool = False
+    toolchain_name: str
+
+    @property
+    def toolchain(self) -> toolchains.Toolchain:
+        return toolchains.get_toolchain_by_name(self.toolchain_name)
+
+    @property
+    def install_dir(self) -> Path:
+        return paths.OUT_DIR / f'{self.name}-install'
+
+    @property
+    def llvm_projects(self) -> Set[str]:
+        """Returns enabled llvm projects."""
+        raise NotImplementedError()
+
+    @property
+    def llvm_targets(self) -> Set[str]:
+        """Returns llvm target archtects to build."""
+        raise NotImplementedError()
+
+    @property
+    def env(self) -> Dict[str, str]:
+        env = super().env
+        return env
+
+    @property
+    def cmake_defines(self) -> Dict[str, str]:
+        defines = super().cmake_defines
+
+        defines['LLVM_ENABLE_PROJECTS'] = ';'.join(self.llvm_projects)
+
         defines['LLVM_TARGETS_TO_BUILD'] = ';'.join(self.llvm_targets)
         defines['LLVM_BUILD_LLVM_DYLIB'] = 'ON'
         defines['CLANG_VENDOR'] = self.clang_vendor
         defines['LLVM_BINUTILS_INCDIR'] = str(paths.ANDROID_DIR / 'toolchain' /
                                               'llvm-project' / 'llvm' / 'tools' /
                                               'binutils' / 'include')
-        defines['LLVM_ENABLE_LIBCXX'] = 'ON'
         defines['LLVM_BUILD_RUNTIME'] = 'ON'
-
-        defines['LLVM_ENABLE_LLD'] = 'ON'
 
 
         return defines
