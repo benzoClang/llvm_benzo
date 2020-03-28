@@ -28,12 +28,17 @@ class Config:
 
     @property
     def cflags(self) -> List[str]:
-        """Returns a list of cflags for this configuration."""
+        """Returns a list of flags for c compiler."""
         raise NotImplementedError()
 
     @property
+    def cxxflags(self) -> List[str]:
+        """Returns a list of flags used for cxx compiler."""
+        return self.cflags
+
+    @property
     def ldflags(self) -> List[str]:
-        """Returns a list of ldflags for this configuration."""
+        """Returns a list of flags for static linker."""
         raise NotImplementedError()
 
     sysroot: Optional[Path] = None

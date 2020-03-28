@@ -31,6 +31,7 @@ from typing import Dict, List, Optional, Set
 
 import benzo_version
 import builders
+from builder_registry import BuilderRegistry
 import configs
 import constants
 import hosts
@@ -869,10 +870,10 @@ def get_shared_extra_defines():
 
 class Stage1Builder(builders.LLVMBuilder):
     name: str = 'stage1'
+    toolchain_name: str = 'prebuilt'
     install_dir: Path = paths.OUT_DIR / 'stage1-install'
     build_llvm_tools: bool = False
     build_all_targets: bool = False
-    toolchain: toolchains.Toolchain = toolchains.get_prebuilt_toolchain()
     config: configs.Config = configs.host_config()
 
     @property
@@ -923,17 +924,21 @@ class Stage1Builder(builders.LLVMBuilder):
             env['USE_GOMA'] = 'true'
         return env
 
+    @classmethod
+    def built_toolchain(cls) -> toolchains.Toolchain:
+        """The built (or skipped) toolchain."""
+        return toolchains.build_toolchain_for_path(cls.install_dir)
+
 
 class Stage2Builder(builders.LLVMBuilder):
     name: str = 'stage2'
+    toolchain_name: str = 'stage1'
     install_dir: Path = paths.OUT_DIR / 'stage2-install'
-    toolchain: toolchains.Toolchain = toolchains.build_toolchain_for_path(
-        Stage1Builder.install_dir)
     config: configs.Config = configs.host_config()
+    remove_install_dir: bool = True
     debug_build: bool = False
     build_instrumented: bool = False
     profdata_file: Optional[Path] = None
-    enable_assertions: bool = False
     lto: bool = True
 
     @property
@@ -993,9 +998,6 @@ class Stage2Builder(builders.LLVMBuilder):
         # Build libFuzzer here to be exported for the host fuzzer builds.
         defines['COMPILER_RT_BUILD_LIBFUZZER'] = 'ON'
 
-        if self.enable_assertions:
-            defines['LLVM_ENABLE_ASSERTIONS'] = 'ON'
-
         if self.debug_build:
             defines['CMAKE_BUILD_TYPE'] = 'Debug'
 
@@ -1007,7 +1009,6 @@ class Stage2Builder(builders.LLVMBuilder):
             # build
             llvm_profdata = self.toolchain.path / 'bin' / 'llvm-profdata'
             defines['LLVM_PROFDATA'] = str(llvm_profdata)
-
         elif self.profdata_file:
             defines['LLVM_PROFDATA_FILE'] = str(self.profdata_file)
 
@@ -1532,7 +1533,6 @@ def main():
     stage1_build_llvm_tools = instrumented or args.debug
 
     stage1 = Stage1Builder()
-    stage1.build_name = args.build_name
     stage1.clang_vendor = 'benzoClang'
     stage1.ccache = args.ccache
     stage1.build_llvm_tools = stage1_build_llvm_tools
@@ -1542,9 +1542,6 @@ def main():
     stage1_install = str(stage1.install_dir)
 
     if do_build:
-        if os.path.exists(stage2_install) and do_stage2:
-            utils.rm_tree(stage2_install)
-
         profdata_filename = pgo_profdata_filename()
         profdata = pgo_profdata_file(profdata_filename)
         # Do not use PGO profiles if profdata file doesn't exist unless failure
@@ -1554,7 +1551,6 @@ def main():
                                profdata_filename)
 
         stage2 = Stage2Builder()
-        stage2.build_name = args.build_name
         stage2.clang_vendor = 'benzoClang'
         stage2.ccache = args.ccache
         stage2.debug_build = args.debug
