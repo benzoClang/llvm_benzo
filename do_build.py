@@ -871,13 +871,13 @@ class Stage1Builder(builders.LLVMBuilder):
     install_dir: Path = paths.OUT_DIR / 'stage1-install'
     ccache: bool = False
     build_llvm_tools: bool = False
-    debug_stage2: bool = False
+    build_all_targets: bool = False
     toolchain: toolchains.Toolchain = toolchains.get_prebuilt_toolchain()
     config: configs.Config = configs.host_config()
 
     @property
     def llvm_targets(self) -> Set[str]:
-        if self.debug_stage2:
+        if self.build_all_targets:
             return set(ANDROID_TARGETS.split(';'))
         else:
             return set(BASE_TARGETS.split(';'))
@@ -996,10 +996,7 @@ class Stage2Builder(builders.LLVMBuilder):
         defines['LLVM_POLLY_LINK_INTO_TOOLS'] = 'ON'
         defines['CLANG_DEFAULT_LINKER'] = 'lld'
 
-        # lld, lto and pgo instrumentation doesn't work together
-        # http://b/79419131
         if (self.lto and
-                not self.build_instrumented and
                 not self.debug_build):
             defines['LLVM_ENABLE_LTO'] = 'Thin'
 
@@ -1028,10 +1025,7 @@ class Stage2Builder(builders.LLVMBuilder):
             llvm_profdata = self.toolchain.path / 'bin' / 'llvm-profdata'
             defines['LLVM_PROFDATA'] = str(llvm_profdata)
 
-        if self.profdata_file:
-            if self.build_instrumented:
-                raise RuntimeError(
-                    'Cannot simultaneously instrument and use profiles')
+        elif self.profdata_file:
             defines['LLVM_PROFDATA_FILE'] = str(self.profdata_file)
 
         # Disable some warnings for openmp
@@ -1517,7 +1511,7 @@ def main():
     stage1.clang_vendor = 'benzoClang'
     stage1.ccache = args.ccache
     stage1.build_llvm_tools = stage1_build_llvm_tools
-    stage1.debug_stage2 = args.debug
+    stage1.build_all_targets = args.debug or instrumented
     if do_stage1:
         stage1.build()
     stage1_install = str(stage1.install_dir)
@@ -1548,7 +1542,7 @@ def main():
 
         if do_runtimes:
             runtimes_toolchain = stage2_install
-            if args.debug:
+            if args.debug or instrumented:
                 runtimes_toolchain = stage1_install
             build_runtimes(runtimes_toolchain, args)
 
