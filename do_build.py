@@ -902,10 +902,6 @@ class Stage1Builder(builders.LLVMBuilder):
 
         if self.ccache:
             defines['LLVM_CCACHE_BUILD'] = 'ON'
-            defines['CCACHE_PROGRAM'] = utils.android_path(
-                                        'prebuilts/build-tools',
-                                        hosts.build_host().os_tag,
-                                        'bin/ccache')
         else:
             defines['LLVM_CCACHE_BUILD'] = 'OFF'
 
@@ -1002,8 +998,6 @@ class Stage2Builder(builders.LLVMBuilder):
 
         if self.ccache:
             defines['LLVM_CCACHE_BUILD'] = 'ON'
-            defines['CCACHE_PROGRAM'] = utils.android_path(
-                      'prebuilts/build-tools', hosts.build_host().os_tag, 'bin/ccache')
         else:
             defines['LLVM_CCACHE_BUILD'] = 'OFF'
 
