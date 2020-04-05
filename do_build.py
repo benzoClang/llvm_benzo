@@ -1312,20 +1312,6 @@ def package_toolchain(build_dir, build_name, host: hosts.Host, dist_dir, strip=T
     with open(version_file_path, 'w') as version_file:
         version_file.write('11.0.0-{}-benzoClang\n'.format(svn_revision))
 
-    # Create RBE input files.
-    with open(os.path.join(install_dir, 'bin', 'remote_toolchain_inputs'), 'w') as inputs_file:
-        dependencies = ('clang\n'
-                        'clang++\n'
-                        'clang.real\n'
-                        'clang++.real\n'
-                        '../lib64/libc++.so.1\n'
-                       )
-        blacklist_dir = os.path.join('lib64', 'clang', version.long_version(), 'share')
-        blacklist_files = os.listdir(os.path.join(install_dir, blacklist_dir))
-        for f in blacklist_files:
-            dependencies += ('../' + blacklist_dir + '/' + f + '\n')
-        inputs_file.write(dependencies)
-
     # Package up the resulting trimmed install/ directory.
     if create_tar:
         tarball_name = package_name + '-' + host.os_tag
@@ -1336,14 +1322,15 @@ def package_toolchain(build_dir, build_name, host: hosts.Host, dist_dir, strip=T
 
 
 def parse_args():
-    known_platforms = ('linux')
+    known_components = ('linux')
+    known_components_str = ', '.join(known_components)
 
     # Simple argparse.Action to allow comma-separated values (e.g.
     # --option=val1,val2)
     class CommaSeparatedListAction(argparse.Action):
         def __call__(self, parser, namespace, values, option_string):
             for value in values.split(','):
-                if value not in known_platforms:
+                if value not in known_components:
                     error = '\'{}\' invalid.  Choose from {}'.format(
                         value, known_platforms)
                     raise argparse.ArgumentError(self, error)
@@ -1504,6 +1491,7 @@ def main():
     stage1_build_llvm_tools = instrumented or args.debug
 
     stage1 = Stage1Builder()
+    stage1.build_name = args.build_name
     stage1.clang_vendor = 'benzoClang'
     stage1.ccache = args.ccache
     stage1.build_llvm_tools = stage1_build_llvm_tools
@@ -1525,6 +1513,7 @@ def main():
                                profdata_filename)
 
         stage2 = Stage2Builder()
+        stage2.build_name = args.build_name
         stage2.clang_vendor = 'benzoClang'
         stage2.ccache = args.ccache
         stage2.debug_build = args.debug
