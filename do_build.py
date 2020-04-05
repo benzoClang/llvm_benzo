@@ -869,7 +869,6 @@ def get_shared_extra_defines():
 class Stage1Builder(builders.LLVMBuilder):
     name: str = 'stage1'
     install_dir: Path = paths.OUT_DIR / 'stage1-install'
-    ccache: bool = False
     build_llvm_tools: bool = False
     build_all_targets: bool = False
     toolchain: toolchains.Toolchain = toolchains.get_prebuilt_toolchain()
@@ -899,11 +898,6 @@ class Stage1Builder(builders.LLVMBuilder):
         defines = super().cmake_defines
         defines['CLANG_ENABLE_ARCMT'] = 'OFF'
         defines['CLANG_ENABLE_STATIC_ANALYZER'] = 'OFF'
-
-        if self.ccache:
-            defines['LLVM_CCACHE_BUILD'] = 'ON'
-        else:
-            defines['LLVM_CCACHE_BUILD'] = 'OFF'
 
         if self.build_llvm_tools:
             defines['LLVM_BUILD_TOOLS'] = 'ON'
@@ -935,7 +929,6 @@ class Stage2Builder(builders.LLVMBuilder):
     toolchain: toolchains.Toolchain = toolchains.build_toolchain_for_path(
         Stage1Builder.install_dir)
     config: configs.Config = configs.host_config()
-    ccache: bool = False
     debug_build: bool = False
     build_instrumented: bool = False
     profdata_file: Optional[Path] = None
@@ -995,11 +988,6 @@ class Stage2Builder(builders.LLVMBuilder):
         if (self.lto and
                 not self.debug_build):
             defines['LLVM_ENABLE_LTO'] = 'Thin'
-
-        if self.ccache:
-            defines['LLVM_CCACHE_BUILD'] = 'ON'
-        else:
-            defines['LLVM_CCACHE_BUILD'] = 'OFF'
 
         # Build libFuzzer here to be exported for the host fuzzer builds.
         defines['COMPILER_RT_BUILD_LIBFUZZER'] = 'ON'

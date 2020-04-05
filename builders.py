@@ -144,6 +144,7 @@ class LLVMBuilder(CMakeBuilder):
     src_dir: Path = paths.LLVM_PATH / 'llvm'
     config: configs.Config
     clang_vendor: str
+    ccache: bool = False
 
     @property
     def llvm_projects(self) -> Set[str]:
@@ -165,6 +166,11 @@ class LLVMBuilder(CMakeBuilder):
         defines = super().cmake_defines
 
         defines['LLVM_ENABLE_PROJECTS'] = ';'.join(self.llvm_projects)
+
+        if self.ccache:
+            defines['LLVM_CCACHE_BUILD'] = 'ON'
+        else:
+            defines['LLVM_CCACHE_BUILD'] = 'OFF'
 
         defines['LLVM_ENABLE_ASSERTIONS'] = 'OFF'
         # https://github.com/android-ndk/ndk/issues/574 - Don't depend on libtinfo.
