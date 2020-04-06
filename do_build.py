@@ -298,6 +298,7 @@ def base_cmake_defines():
     # https://github.com/android-ndk/ndk/issues/574 - Don't depend on libtinfo.
     defines['LLVM_ENABLE_TERMINFO'] = 'OFF'
     defines['LLVM_ENABLE_THREADS'] = 'ON'
+    defines['LLVM_OPTIMIZED_TABLEGEN'] = 'ON'
     defines['LLVM_PARALLEL_COMPILE_JOBS'] = subprocess.getoutput("nproc")
     defines['LLVM_PARALLEL_LINK_JOBS'] = subprocess.getoutput("nproc")
     defines['LLVM_USE_NEWPM'] = 'ON'
@@ -1022,6 +1023,46 @@ class Stage2Builder(builders.LLVMBuilder):
 
         defines['LIBCXX_ENABLE_STATIC_ABI_LIBRARY'] = 'ON'
         defines['LIBCXX_ENABLE_ABI_LINKER_SCRIPT'] = 'OFF'
+
+        # Disable a bunch of unused tools
+        defines['LLVM_INCLUDE_TESTS'] = 'OFF'
+        defines['LLVM_TOOL_LLVM_LIPO_BUILD'] = 'OFF'
+        defines['LLVM_TOOL_LLVM_JITLINK_BUILD'] = 'OFF'
+        defines['LLVM_TOOL_LLVM_AS_FUZZER_BUILD'] = 'OFF'
+        defines['LLVM_TOOL_LLVM_BCANALYZER_BUILD'] = 'OFF'
+        defines['LLVM_TOOL_LLVM_CAT_BUILD'] = 'OFF'
+        defines['LLVM_TOOL_LLVM_CVTRES_BUILD'] = 'OFF'
+        defines['LLVM_TOOL_LLVM_CXXDUMP_BUILD'] = 'OFF'
+        defines['LLVM_TOOL_LLVM_CXXFILT_BUILD'] = 'OFF'
+        defines['LLVM_TOOL_LLVM_CXXMAP_BUILD'] = 'OFF'
+        defines['LLVM_TOOL_LLVM_C_TEST_BUILD'] = 'OFF'
+        defines['LLVM_TOOL_LLVM_DIFF_BUILD'] = 'OFF'
+        defines['LLVM_TOOL_LLVM_DWP_BUILD'] = 'OFF'
+        defines['LLVM_TOOL_LLVM_ELFABI_BUILD'] = 'OFF'
+        defines['LLVM_TOOL_LLVM_EXEGESIS_BUILD'] = 'OFF'
+        defines['LLVM_TOOL_LLVM_EXTRACT_BUILD'] = 'OFF'
+        defines['LLVM_TOOL_LLVM_GO_BUILD'] = 'OFF'
+        defines['LLVM_TOOL_LLVM_GSYMUTIL_BUILD'] = 'OFF'
+        defines['LLVM_TOOL_LLVM_IFS_BUILD'] = 'OFF'
+        defines['LLVM_TOOL_LLVM_ISEL_FUZZER_BUILD'] = 'OFF'
+        defines['LLVM_TOOL_LLVM_ITANIUM_DEMANGLE_FUZZER_BUILD'] = 'OFF'
+        defines['LLVM_TOOL_LLVM_JITLINK_BUILD'] = 'OFF'
+        defines['LLVM_TOOL_LLVM_LIPO_BUILD'] = 'OFF'
+        defines['LLVM_TOOL_LLVM_LTO2_BUILD'] = 'OFF'
+        defines['LLVM_TOOL_LLVM_LTO_BUILD'] = 'OFF'
+        defines['LLVM_TOOL_LLVM_MCA_BUILD'] = 'OFF'
+        defines['LLVM_TOOL_LLVM_MC_BUILD'] = 'OFF'
+        defines['LLVM_TOOL_LLVM_ML_BUILD'] = 'OFF'
+        defines['LLVM_TOOL_LLVM_MT_BUILD'] = 'OFF'
+        defines['LLVM_TOOL_LLVM_OPT_FUZZER_BUILD'] = 'OFF'
+        defines['LLVM_TOOL_LLVM_OPT_REPORT_BUILD'] = 'OFF'
+        defines['LLVM_TOOL_LLVM_PDBUTIL_BUILD'] = 'OFF'
+        defines['LLVM_TOOL_LLVM_REDUCE_BUILD'] = 'OFF'
+        defines['LLVM_TOOL_LLVM_RTDYLD_BUILD'] = 'OFF'
+        defines['LLVM_TOOL_LLVM_SPLIT_BUILD'] = 'OFF'
+        defines['LLVM_TOOL_LLVM_STRESS_BUILD'] = 'OFF'
+        defines['LLVM_TOOL_LLVM_UNDNAME_BUILD'] = 'OFF'
+        defines['LLVM_TOOL_LLVM_XRAY_BUILD'] = 'OFF'
 
         return defines
 
