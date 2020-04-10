@@ -16,4 +16,4 @@
 """Configs for the build."""
 
 # This is the baseline stable version of Clang to start our stage-1 build.
-CLANG_PREBUILT_VERSION: str = 'clang-r370808'
+CLANG_PREBUILT_VERSION: str = 'clang-r377782d'
