@@ -516,74 +516,6 @@ def build_libcxxabi(toolchain, build_arch: hosts.Arch):
         return out_path
 
 
-def build_crts_host_i686(toolchain, clang_version):
-    logger().info('Building compiler-rt for host-i686')
-
-    llvm_config = os.path.join(toolchain, 'bin', 'llvm-config')
-
-    crt_install = os.path.join(toolchain, 'lib64', 'clang',
-                               clang_version.long_version())
-    crt_cmake_path = utils.llvm_path('compiler-rt')
-
-    cflags, ldflags = host_gcc_toolchain_flags(hosts.build_host(), is_32_bit=True)
-
-    crt_defines = base_cmake_defines()
-    crt_defines['CMAKE_C_COMPILER'] = os.path.join(toolchain, 'bin',
-                                                   'clang')
-    crt_defines['CMAKE_CXX_COMPILER'] = os.path.join(toolchain, 'bin',
-                                                     'clang++')
-
-    # compiler-rt/lib/gwp_asan uses PRIu64 and similar format-specifier macros.
-    # Add __STDC_FORMAT_MACROS so their definition gets included from
-    # inttypes.h.  This explicit flag is only needed here.  64-bit host runtimes
-    # are built in stage1/stage2 and get it from the LLVM CMake configuration.
-    # These are defined unconditionaly in bionic and newer glibc
-    # (https://sourceware.org/git/gitweb.cgi?p=glibc.git;h=1ef74943ce2f114c78b215af57c2ccc72ccdb0b7)
-    cflags.append('-D__STDC_FORMAT_MACROS')
-
-    # Due to CMake and Clang oddities, we need to explicitly set
-    # CMAKE_C_COMPILER_TARGET and use march=i686 in cflags below instead of
-    # relying on auto-detection from the Compiler-rt CMake files.
-    crt_defines['CMAKE_C_COMPILER_TARGET'] = 'i386-linux-gnu'
-
-    crt_defines['CMAKE_SYSROOT'] = host_sysroot()
-
-    cflags.append('--target=i386-linux-gnu')
-    cflags.append('-march=i686')
-    cflags.append('-Wno-unused-command-line-argument')
-
-    crt_defines['LLVM_CONFIG_PATH'] = llvm_config
-    crt_defines['COMPILER_RT_INCLUDE_TESTS'] = 'ON'
-    crt_defines['COMPILER_RT_ENABLE_WERROR'] = 'ON'
-    crt_defines['CMAKE_INSTALL_PREFIX'] = crt_install
-    crt_defines['SANITIZER_CXX_ABI'] = 'libstdc++'
-
-    # Set the compiler and linker flags
-    crt_defines['CMAKE_ASM_FLAGS'] = ' '.join(cflags)
-    crt_defines['CMAKE_C_FLAGS'] = ' '.join(cflags)
-    crt_defines['CMAKE_CXX_FLAGS'] = ' '.join(cflags)
-
-    crt_defines['CMAKE_EXE_LINKER_FLAGS'] = ' '.join(ldflags)
-    crt_defines['CMAKE_SHARED_LINKER_FLAGS'] = ' '.join(ldflags)
-    crt_defines['CMAKE_MODULE_LINKER_FLAGS'] = ' '.join(ldflags)
-
-    crt_env = dict(ORIG_ENV)
-
-    crt_path = utils.out_path('lib', 'clangrt-i386-host')
-    rm_cmake_cache(crt_path)
-
-    # Also remove the "stamps" created for the libcxx included in libfuzzer so
-    # CMake runs the configure again (after the cmake caches are deleted in the
-    # line above).
-    utils.remove(os.path.join(crt_path, 'lib', 'fuzzer', 'libcxx_fuzzer_i386-stamps'))
-
-    invoke_cmake(
-        out_path=crt_path,
-        defines=crt_defines,
-        env=crt_env,
-        cmake_path=crt_cmake_path)
-
-
 def host_sysroot():
     return utils.android_path('prebuilts/gcc', hosts.build_host().os_tag,
                               'host/x86_64-linux-glibc2.17-4.8/sysroot')
@@ -891,6 +823,51 @@ class CompilerRTBuilder(builders.LLVMRuntimeBuilder):
                 shutil.copy2(f, header_dst)
 
 
+class CompilerRTHostI386Builder(builders.LLVMRuntimeBuilder):
+    name: str = 'compiler-rt-i386-host'
+    src_dir: Path = paths.LLVM_PATH / 'compiler-rt'
+    config_list: List[configs.Config] = [configs.LinuxConfig(is_32_bit=True)]
+
+    @property
+    def install_dir(self) -> Path:
+        return self.toolchain.clang_lib_dir
+
+    @property
+    def cmake_defines(self) -> Dict[str, str]:
+        defines = super().cmake_defines
+        # Due to CMake and Clang oddities, we need to explicitly set
+        # CMAKE_C_COMPILER_TARGET and use march=i686 in cflags below instead of
+        # relying on auto-detection from the Compiler-rt CMake files.
+        defines['CMAKE_C_COMPILER_TARGET'] = 'i386-linux-gnu'
+        defines['COMPILER_RT_INCLUDE_TESTS'] = 'ON'
+        defines['COMPILER_RT_ENABLE_WERROR'] = 'ON'
+        defines['SANITIZER_CXX_ABI'] = 'libstdc++'
+        return defines
+
+    @property
+    def cflags(self) -> List[str]:
+        cflags = super().cflags
+        # compiler-rt/lib/gwp_asan uses PRIu64 and similar format-specifier macros.
+        # Add __STDC_FORMAT_MACROS so their definition gets included from
+        # inttypes.h.  This explicit flag is only needed here.  64-bit host runtimes
+        # are built in stage1/stage2 and get it from the LLVM CMake configuration.
+        # These are defined unconditionaly in bionic and newer glibc
+        # (https://sourceware.org/git/gitweb.cgi?p=glibc.git;h=1ef74943ce2f114c78b215af57c2ccc72ccdb0b7)
+        cflags.append('-D__STDC_FORMAT_MACROS')
+        cflags.append('--target=i386-linux-gnu')
+        cflags.append('-march=i686')
+        cflags.append('-Wno-unused-command-line-argument')
+        return cflags
+
+    def _build_config(self) -> None:
+        # Also remove the "stamps" created for the libcxx included in libfuzzer so
+        # CMake runs the configure again (after the cmake caches are deleted).
+        stamp_path = self.output_dir / 'lib' / 'fuzzer' / 'libcxx_fuzzer_i386-stamps'
+        if stamp_path.exists():
+            shutil.rmtree(stamp_path)
+        super()._build_config()
+
+
 class LibOMPBuilder(builders.LLVMRuntimeBuilder):
     name: str = 'libomp'
     src_dir: Path = paths.LLVM_PATH / 'openmp'
@@ -946,8 +923,7 @@ def build_runtimes(toolchain, args=None):
         create_sysroots()
     version = extract_clang_version(toolchain)
     CompilerRTBuilder().build()
-    if BuilderRegistry.should_build('compiler-rt'):
-        build_crts_host_i686(toolchain, version)
+    CompilerRTHostI386Builder().build()
     LibOMPBuilder().build()
     # Bug: http://b/64037266. `strtod_l` is missing in NDK r15. This will break
     # libcxx build.
