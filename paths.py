@@ -32,7 +32,8 @@ CLANG_PREBUILT_LIBCXX_HEADERS: Path = CLANG_PREBUILT_DIR / 'include' / 'c++' / '
 BIONIC_HEADERS: Path = ANDROID_DIR / 'bionic' / 'libc' / 'include'
 
 CMAKE_BIN_PATH: Path = PREBUILTS_DIR / 'cmake' / hosts.build_host().os_tag / 'bin' / 'cmake'
-NINJA_BIN_PATH: Path = PREBUILTS_DIR / 'build-tools' / hosts.build_host().os_tag / 'bin' / 'ninja'
+NINJA_BIN_PATH: Path = PREBUILTS_DIR / 'cmake' / hosts.build_host().os_tag / 'bin' / 'ninja'
+GO_BIN_PATH: Path = PREBUILTS_DIR / 'go' / hosts.build_host().os_tag / 'bin' / 'go'
 
 NDK_BASE: Path = ANDROID_DIR / 'toolchain' / 'prebuilts' /'ndk' / constants.NDK_VERSION
 NDK_LIBCXX_HEADERS: Path = NDK_BASE / 'sources' / 'cxx-stl' / 'llvm-libc++'/ 'include'

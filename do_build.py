@@ -126,13 +126,8 @@ def support_headers():
     return os.path.join(ndk_base(), 'sources', 'android', 'support', 'include')
 
 
-def clang_prebuilt_base_dir():
-    return utils.android_path('prebuilts/clang/host',
-                              hosts.build_host().os_tag, constants.CLANG_PREBUILT_VERSION)
-
-
 def clang_prebuilt_bin_dir():
-    return utils.android_path(clang_prebuilt_base_dir(), 'bin')
+    return utils.android_path(paths.CLANG_PREBUILT_DIR, 'bin')
 
 
 def clang_resource_dir(version, arch: Optional[hosts.Arch] = None):
@@ -141,7 +136,7 @@ def clang_resource_dir(version, arch: Optional[hosts.Arch] = None):
 
 
 def clang_prebuilt_libcxx_headers():
-    return utils.android_path(clang_prebuilt_base_dir(), 'include', 'c++', 'v1')
+    return utils.android_path(paths.CLANG_PREBUILT_DIR, 'include', 'c++', 'v1')
 
 
 def libcxx_header_dirs(ndk_cxx):
@@ -160,11 +155,15 @@ def libcxx_header_dirs(ndk_cxx):
 
 
 def cmake_bin_path():
-    return utils.android_path('prebuilts/cmake', hosts.build_host().os_tag, 'bin/cmake')
+    return utils.android_path(paths.CMAKE_BIN_PATH)
 
 
 def ninja_bin_path():
-    return utils.android_path('prebuilts/build-tools', hosts.build_host().os_tag, 'bin/ninja')
+    return utils.android_path(paths.NINJA_BIN_PATH)
+
+
+def go_bin_dir():
+    return utils.android_path(paths.GO_BIN_PATH)
 
 
 def check_create_path(path):
@@ -180,10 +179,6 @@ def get_sysroot(arch: hosts.Arch, platform=False):
 
 def debug_prefix_flag():
     return '-fdebug-prefix-map={}='.format(utils.android_path())
-
-
-def go_bin_dir():
-    return utils.android_path('prebuilts/build-tools', hosts.build_host().os_tag, 'go/bin')
 
 
 def create_sysroots():
