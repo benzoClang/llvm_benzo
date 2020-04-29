@@ -1105,6 +1105,7 @@ def package_toolchain(build_dir, build_name, host: hosts.Host, dist_dir, strip=T
         'llvm-config',
         'llvm-cov',
         'llvm-dis',
+        'llvm-dwarfdump',
         'llvm-lib',
         'llvm-link',
         'llvm-modextract',
