@@ -22,9 +22,19 @@ import os
 import shutil
 import stat
 import subprocess
-import sys
 
 THIS_DIR = os.path.realpath(os.path.dirname(__file__))
+
+try:
+    from shlex import quote as _shlex_quote # Python 3.3
+except ImportError:
+    from pipes import quote as _shlex_quote
+
+try:
+    from os import fsdecode as _os_fsdecode # Python 3.2
+except ImportError:
+    def _os_fsdecode(arg):
+        return arg
 
 
 def remove(path):
@@ -84,7 +94,7 @@ def check_call(cmd, *args, **kwargs):
     """subprocess.check_call with logging."""
     logger().info('check_call:%s %s',
                   datetime.datetime.now().strftime("%H:%M:%S"),
-                  subprocess.list2cmdline(cmd))
+                  list2cmdline(cmd))
     subprocess.check_call(cmd, *args, **kwargs)
 
 
@@ -93,11 +103,29 @@ def check_call_d(args, stdout=None, stderr=None, cwd=None, dry_run=False):
         return subprocess.check_call(args, stdout=stdout, stderr=stderr,
                                      cwd=cwd)
     else:
-        print("Project " + os.path.basename(cwd) + ": " + ' '.join(args))
+        print("Project " + os.path.basename(cwd) + ": " + list2cmdline(args))
 
 def check_output_d(args, stderr=None, cwd=None, dry_run=False):
     if not dry_run:
         return subprocess.check_output(args, stderr=stderr, cwd=cwd,
                                        universal_newlines=True)
     else:
-        print("Project " + os.path.basename(cwd) + ": " + ' '.join(args))
+        print("Project " + os.path.basename(cwd) + ": " + list2cmdline(args))
+
+
+def list2cmdline(args):
+    """Joins arguments into a Bourne-shell cmdline.
+
+    Like shlex.join from Python 3.8, but is flexible about the argument type.
+    Each argument can be a str, a bytes, or a path-like object. (subprocess.call
+    is similarly flexible.)
+
+    Similar to the undocumented subprocess.list2cmdline, but does Bourne-style
+    escaping rather than MSVCRT escaping.
+
+    Python 2: returns a `unicode` if any argument is a `unicode`, and a `str`
+    otherwise.
+
+    Python 3: always returns a `str`.
+    """
+    return ' '.join([_shlex_quote(_os_fsdecode(arg)) for arg in args])
