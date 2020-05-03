@@ -791,7 +791,11 @@ class CompilerRTBuilder(builders.LLVMRuntimeBuilder):
     def cflags(self) -> List[str]:
         cflags = super().cflags
         cflags.append('-funwind-tables')
+        cflags.append('-Wno-incompatible-pointer-types')
         cflags.append('-Wno-unused-command-line-argument')
+        cflags.append('-Wno-unused-variable')
+        cflags.append('-Wno-visibility')
+
         return cflags
 
     def install_config(self) -> None:
@@ -905,6 +909,7 @@ class LibOMPBuilder(builders.LLVMRuntimeBuilder):
         cflags = super().cflags
         cflags.append('-Wno-unused-command-line-argument')
         cflags.append('-Wno-non-c-typedef-for-linkage')
+        cflags.append('-Wno-unused-variable')
         return cflags
 
     def install_config(self) -> None:
