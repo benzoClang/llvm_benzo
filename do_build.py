@@ -1303,6 +1303,7 @@ def parse_args():
 
 
 def main():
+    start_time = datetime.datetime.now()
     args = parse_args()
     if args.skip_build:
         # Skips all builds
@@ -1390,6 +1391,9 @@ def main():
             hosts.build_host(),
             dist_dir,
             strip=do_strip_host_package)
+
+    print ('')
+    print ('Build took {0} to complete.'.format(datetime.datetime.now() - start_time))
 
     return 0
 
