@@ -285,31 +285,6 @@ def rm_cmake_cache(cacheDir):
             utils.rm_tree(os.path.join(dirpath, 'CMakeFiles'))
 
 
-# Base cmake options such as build type that are common across all invocations
-def base_cmake_defines():
-    defines = {}
-
-    defines['CMAKE_BUILD_TYPE'] = 'Release'
-    defines['LLVM_ENABLE_ASSERTIONS'] = 'OFF'
-    # https://github.com/android-ndk/ndk/issues/574 - Don't depend on libtinfo.
-    defines['LLVM_ENABLE_TERMINFO'] = 'OFF'
-    defines['LLVM_ENABLE_THREADS'] = 'ON'
-    defines['LLVM_OPTIMIZED_TABLEGEN'] = 'ON'
-    defines['LLVM_PARALLEL_COMPILE_JOBS'] = subprocess.getoutput("nproc")
-    defines['LLVM_PARALLEL_LINK_JOBS'] = subprocess.getoutput("nproc")
-    defines['LLVM_USE_NEWPM'] = 'ON'
-    defines['LLVM_LIBDIR_SUFFIX'] = '64'
-    defines['LLVM_VERSION_PATCH'] = benzo_version.patch_level
-    defines['CLANG_VERSION_PATCHLEVEL'] = benzo_version.patch_level
-    defines['CLANG_REPOSITORY_STRING'] = 'https://github.com/benzoClang/llvm-project'
-    defines['CLANG_TC_DATE'] = datetime.datetime.now().strftime("%Y%m%d")
-    defines['TOOLCHAIN_REVISION_STRING'] = benzo_version.svn_revision
-
-    # http://b/111885871 - Disable building xray because of MacOS issues.
-    defines['COMPILER_RT_BUILD_XRAY'] = 'OFF'
-    return defines
-
-
 def invoke_cmake(out_path, defines, env, cmake_path, target=None, install=True):
     flags = ['-G', 'Ninja']
 

@@ -234,10 +234,9 @@ class AndroidConfig(_BaseConfig):
 class AndroidARMConfig(AndroidConfig):
     """Configs for android arm targets."""
     target_arch: hosts.Arch = hosts.Arch.ARM
-    _ndk_triple: str = target_arch.ndk_triple
-    _toolchain_path: Path = Path(f'arm/{_ndk_triple}-4.9/{_ndk_triple}')
-    _toolchain_lib: Path = (paths.NDK_BASE / 'toolchains' / f'{_ndk_triple}-4.9' /
-                            'prebuilt' / 'linux-x86_64' / _ndk_triple / 'lib')
+    _toolchain_path: Path = Path('arm/arm-linux-androideabi-4.9/arm-linux-androideabi')
+    _toolchain_lib: Path = (paths.NDK_BASE / 'toolchains' / 'arm-linux-androideabi-4.9' /
+                            'prebuilt' / 'linux-x86_64' / 'arm-linux-androideabi' / 'lib')
 
     @property
     def cflags(self) -> List[str]:
@@ -249,28 +248,25 @@ class AndroidARMConfig(AndroidConfig):
 class AndroidAArch64Config(AndroidConfig):
     """Configs for android arm64 targets."""
     target_arch: hosts.Arch = hosts.Arch.AARCH64
-    _ndk_triple: str = target_arch.ndk_triple
-    _toolchain_path: Path = Path(f'aarch64/{_ndk_triple}-4.9/{_ndk_triple}')
-    _toolchain_lib: Path = (paths.NDK_BASE / 'toolchains' / f'{_ndk_triple}-4.9' /
-                            'prebuilt' / 'linux-x86_64' / _ndk_triple / 'lib64')
+    _toolchain_path: Path = Path('aarch64/aarch64-linux-android-4.9/aarch64-linux-android')
+    _toolchain_lib: Path = (paths.NDK_BASE / 'toolchains' / 'aarch64-linux-android-4.9' /
+                            'prebuilt' / 'linux-x86_64' / 'aarch64-linux-android' / 'lib64')
 
 
 class AndroidX64Config(AndroidConfig):
     """Configs for android x86_64 targets."""
     target_arch: hosts.Arch = hosts.Arch.X86_64
-    _ndk_triple: str = target_arch.ndk_triple
-    _toolchain_path: Path = Path(f'x86/{_ndk_triple}-4.9/{_ndk_triple}')
-    _toolchain_lib: Path = (paths.NDK_BASE / 'toolchains' / 'x86_64-4.9' /
-                            'prebuilt' / 'linux-x86_64' / _ndk_triple / 'lib64')
+    _toolchain_path: Path = Path('x86/x86_64-linux-android-4.9/x86_64-linux-android')
+    _toolchain_lib: Path = (paths.NDK_BASE / 'toolchains' / 'x86_64-4.9' / 'prebuilt' /
+                            'linux-x86_64' / 'x86_64-linux-android' / 'lib64')
 
 
 class AndroidI386Config(AndroidConfig):
     """Configs for android x86 targets."""
     target_arch: hosts.Arch = hosts.Arch.I386
-    _ndk_triple: str = target_arch.ndk_triple
     _toolchain_path: Path = Path('x86/x86_64-linux-android-4.9/x86_64-linux-android')
     _toolchain_lib: Path = (paths.NDK_BASE / 'toolchains' / 'x86-4.9' /
-                            'prebuilt' / 'linux-x86_64' / _ndk_triple / 'lib')
+                            'prebuilt' / 'linux-x86_64' / 'x86-linux-android' / 'lib')
 
     @property
     def cflags(self) -> List[str]:
