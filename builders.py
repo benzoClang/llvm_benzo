@@ -318,6 +318,7 @@ class LLVMBuilder(LLVMBaseBuilder):
         defines['LLVM_TARGETS_TO_BUILD'] = ';'.join(self.llvm_targets)
         defines['LLVM_BUILD_LLVM_DYLIB'] = 'ON'
         defines['CLANG_VENDOR'] = self.clang_vendor
+        defines['LLD_VENDOR'] = self.clang_vendor
         defines['LLVM_BINUTILS_INCDIR'] = str(paths.ANDROID_DIR / 'toolchain' /
                                               'llvm-project' / 'llvm' / 'tools' /
                                               'binutils' / 'include')
