@@ -645,6 +645,7 @@ class Stage2Builder(builders.LLVMBuilder):
         defines['LIBOMP_ENABLE_SHARED'] = 'FALSE'
         defines['LLVM_POLLY_LINK_INTO_TOOLS'] = 'ON'
         defines['CLANG_DEFAULT_LINKER'] = 'lld'
+        defines['CLANG_PYTHON_BINDINGS_VERSIONS'] = '3'
 
         if (self.lto and
                 not self.build_instrumented and
