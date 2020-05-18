@@ -1276,6 +1276,10 @@ def parse_args():
         action='store_true',
         default=False,
         help='Enable the use of ccache during build')
+    parser.add_argument(
+        '--ccache-dir',
+        action='store',
+        help='Use custom path for cache instead of out_dir/.ccache')
 
     return parser.parse_args()
 
@@ -1324,6 +1328,7 @@ def main():
     stage1.build_name = args.build_name
     stage1.clang_vendor = 'benzoClang'
     stage1.ccache = args.ccache
+    stage1.ccache_dir = args.ccache_dir
     stage1.build_llvm_tools = stage1_build_llvm_tools
     stage1.build_all_targets = args.debug or instrumented
     stage1.build()
@@ -1344,6 +1349,7 @@ def main():
         stage2.build_name = args.build_name
         stage2.clang_vendor = 'benzoClang'
         stage2.ccache = args.ccache
+        stage2.ccache_dir = args.ccache_dir
         stage2.debug_build = args.debug
         stage2.enable_assertions = args.enable_assertions
         stage2.lto = not args.no_lto

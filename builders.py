@@ -211,6 +211,7 @@ class LLVMBaseBuilder(CMakeBuilder):  # pylint: disable=abstract-method
 
     enable_assertions: bool = False
     ccache: bool = False
+    ccache_dir: str = None
 
     @property
     def cmake_defines(self) -> Dict[str, str]:
@@ -218,6 +219,10 @@ class LLVMBaseBuilder(CMakeBuilder):  # pylint: disable=abstract-method
 
         if self.ccache:
             defines['LLVM_CCACHE_BUILD'] = 'ON'
+            if self.ccache_dir is None:
+                defines['LLVM_CCACHE_DIR'] = str(paths.OUT_DIR / '.ccache')
+            else:
+                defines['LLVM_CCACHE_DIR'] = str(Path(self.ccache_dir))
         else:
             defines['LLVM_CCACHE_BUILD'] = 'OFF'
 
