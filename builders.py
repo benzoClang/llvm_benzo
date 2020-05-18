@@ -98,9 +98,11 @@ class CMakeBuilder(Builder):
         cflags_str = ' '.join(cflags)
         cxxflags_str = ' '.join(cxxflags)
         ldflags_str = ' '.join(ldflags)
+        cxx_std_str = '17'
         defines: Dict[str, str] = {
             'CMAKE_C_COMPILER': str(self.toolchain.cc),
             'CMAKE_CXX_COMPILER': str(self.toolchain.cxx),
+            'CMAKE_CXX_STANDARD':  cxx_std_str,
 
             'CMAKE_ASM_FLAGS':  cflags_str,
             'CMAKE_C_FLAGS': cflags_str,
