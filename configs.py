@@ -128,12 +128,6 @@ class LinuxConfig(_GccConfig):
     gcc_triple: str = 'x86_64-linux'
     gcc_ver: str = '4.8.3'
 
-    @property
-    def cflags(self) -> List[str]:
-        cflags = super().cflags
-        cflags.append(f'--gcc-toolchain={self.gcc_root}')
-        return cflags
-
 
 class AndroidConfig(_BaseConfig):
     """Config for Android targets."""

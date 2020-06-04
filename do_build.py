@@ -412,9 +412,6 @@ def host_gcc_toolchain_flags(host: hosts.Host, is_32_bit=False):
     gccTriple = 'x86_64-linux'
     gccVersion = '4.8.3'
 
-    # gcc-toolchain is only needed for Linux
-    cflags.append(f'--gcc-toolchain={gccRoot}')
-
     cflags.append(f'-B{gccRoot}/{gccTriple}/bin')
 
     gccLibDir = f'{gccRoot}/lib/gcc/{gccTriple}/{gccVersion}'
