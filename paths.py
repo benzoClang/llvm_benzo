@@ -26,6 +26,7 @@ OUT_DIR: Path = Path(os.environ.get('OUT_DIR', ANDROID_DIR / 'out')).resolve()
 SYSROOTS: Path = OUT_DIR / 'sysroots'
 LLVM_PATH: Path = ANDROID_DIR / 'toolchain' / 'llvm-project'
 PREBUILTS_DIR: Path = ANDROID_DIR / 'prebuilts'
+EXTERNAL_DIR: Path = ANDROID_DIR / 'external'
 
 CLANG_PREBUILT_DIR: Path = (PREBUILTS_DIR / 'clang' / 'host' / hosts.build_host().os_tag
                             / constants.CLANG_PREBUILT_VERSION)

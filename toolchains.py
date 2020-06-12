@@ -30,6 +30,7 @@ class Toolchain:
 
     def __init__(self, path: Path, build_path: Path) -> None:
         self.path = path
+        self.build_path = build_path
 
     @property
     def cc(self) -> Path:  # pylint: disable=invalid-name
@@ -91,6 +92,7 @@ def set_runtime_toolchain(toolchain: Toolchain) -> None:
     """Sets the toolchain used to build runtime."""
     global _RUNTIME_TOOLCHAIN  # pylint: disable=global-statement
     _RUNTIME_TOOLCHAIN = toolchain
+
 
 def get_runtime_toolchain() -> Toolchain:
     """Gets the toolchain used to build runtime."""

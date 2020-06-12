@@ -154,10 +154,6 @@ def libcxx_header_dirs(ndk_cxx):
         ]
 
 
-def go_bin_dir():
-    return utils.android_path(paths.GO_BIN_PATH)
-
-
 def check_create_path(path):
     if not os.path.exists(path):
         os.makedirs(path)
@@ -171,6 +167,10 @@ def get_sysroot(arch: hosts.Arch, platform=False):
 
 def debug_prefix_flag():
     return '-fdebug-prefix-map={}='.format(utils.android_path())
+
+
+def go_bin_dir():
+    return utils.android_path(paths.GO_BIN_PATH)
 
 
 def update_cmake_sysroot_flags(defines, sysroot):
@@ -435,15 +435,15 @@ class Stage1Builder(builders.LLVMBuilder):
     toolchain_name: str = 'prebuilt'
     install_dir: Path = paths.OUT_DIR / 'stage1-install'
     build_llvm_tools: bool = False
-    build_all_targets: bool = False
+    build_android_targets: bool = False
     config_list: List[configs.Config] = [configs.host_config()]
 
     @property
     def llvm_targets(self) -> Set[str]:
-        if self.build_all_targets:
-            return set(ANDROID_TARGETS.split(';'))
+        if self.build_android_targets:
+            return constants.HOST_TARGETS | constants.ANDROID_TARGETS
         else:
-            return set(BASE_TARGETS.split(';'))
+            return constants.HOST_TARGETS
 
     @property
     def llvm_projects(self) -> Set[str]:
@@ -501,7 +501,7 @@ class Stage2Builder(builders.LLVMBuilder):
 
     @property
     def llvm_targets(self) -> Set[str]:
-        return set(ANDROID_TARGETS.split(';'))
+        return constants.ANDROID_TARGETS
 
     @property
     def llvm_projects(self) -> Set[str]:
@@ -910,10 +910,10 @@ def install_wrappers(llvm_install_path):
     go_env = dict(os.environ)
     go_env['PATH'] = go_bin_dir() + ':' + go_env['PATH']
     utils.check_call([sys.executable, wrapper_build_script,
-                '--config=android',
-                '--use_ccache=false',
-                '--use_llvm_next=true',
-                '--output_file=' + wrapper_path], env=go_env)
+                      '--config=android',
+                      '--use_ccache=false',
+                      '--use_llvm_next=true',
+                      '--output_file=' + wrapper_path], env=go_env)
 
     bisect_path = utils.android_path('toolchain', 'llvm_benzo',
                                      'bisect_driver.py')
@@ -1313,7 +1313,7 @@ def main():
     stage1.ccache = args.ccache
     stage1.ccache_dir = args.ccache_dir
     stage1.build_llvm_tools = stage1_build_llvm_tools
-    stage1.build_all_targets = args.debug or instrumented
+    stage1.build_android_targets = args.debug or instrumented
     stage1.build()
     stage1_toolchain = toolchains.get_toolchain_from_builder(stage1)
     toolchains.set_runtime_toolchain(stage1_toolchain)

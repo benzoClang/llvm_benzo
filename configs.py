@@ -134,6 +134,7 @@ class AndroidConfig(_BaseConfig):
 
     target_os: hosts.Host = hosts.Host.Android
 
+    target_arch: hosts.Arch
     _toolchain_path: Path
     _toolchain_lib: Path
 

@@ -30,9 +30,7 @@ def get_host_tag():
 
 
 def run_with_py3(script_name):
-    python_bin = os.path.join(THIS_DIR, "..", "..", "prebuilts", "python",
-                              get_host_tag(), 'bin', 'python3')
-
+    python_bin = os.path.join(THIS_DIR, "..", "..", "prebuilts", "python", get_host_tag(), 'bin', 'python3')
     python_bin = os.path.abspath(python_bin)
     subprocess.check_call(
         [python_bin, os.path.join(THIS_DIR, script_name)] + sys.argv[1:])

@@ -18,22 +18,15 @@
 import datetime
 import logging
 import os
+import shlex
 import shutil
 import stat
 import subprocess
+from typing import List
+
+import constants
 
 THIS_DIR = os.path.realpath(os.path.dirname(__file__))
-
-try:
-    from shlex import quote as _shlex_quote # Python 3.3
-except ImportError:
-    from pipes import quote as _shlex_quote
-
-try:
-    from os import fsdecode as _os_fsdecode # Python 3.2
-except ImportError:
-    def _os_fsdecode(arg):
-        return arg
 
 
 def remove(path):
@@ -89,12 +82,28 @@ def logger():
     return logging.getLogger(__name__)
 
 
+def unchecked_call(cmd, *args, **kwargs):
+    """subprocess.call with logging."""
+    logger().info('call:%s %s',
+                  datetime.datetime.now().strftime("%H:%M:%S"),
+                  list2cmdline(cmd))
+    subprocess.call(cmd, *args, **kwargs)
+
+
 def check_call(cmd, *args, **kwargs):
     """subprocess.check_call with logging."""
     logger().info('check_call:%s %s',
                   datetime.datetime.now().strftime("%H:%M:%S"),
                   list2cmdline(cmd))
     subprocess.check_call(cmd, *args, **kwargs)
+
+
+def check_output(cmd, *args, **kwargs):
+    """subprocess.check_output with logging."""
+    logger().info('check_output:%s %s',
+                  datetime.datetime.now().strftime("%H:%M:%S"),
+                  list2cmdline(cmd))
+    return subprocess.check_output(cmd, *args, **kwargs, text=True)
 
 
 def check_call_d(args, stdout=None, stderr=None, cwd=None, dry_run=False):
@@ -112,6 +121,11 @@ def check_output_d(args, stderr=None, cwd=None, dry_run=False):
         print("Project " + os.path.basename(cwd) + ": " + list2cmdline(args))
 
 
+def parse_version(ver: str) -> List[int]:
+    """Parses a dot separated version string to int list."""
+    return list(int(v) for v in ver.split('.'))
+
+
 def list2cmdline(args):
     """Joins arguments into a Bourne-shell cmdline.
 
@@ -121,10 +135,5 @@ def list2cmdline(args):
 
     Similar to the undocumented subprocess.list2cmdline, but does Bourne-style
     escaping rather than MSVCRT escaping.
-
-    Python 2: returns a `unicode` if any argument is a `unicode`, and a `str`
-    otherwise.
-
-    Python 3: always returns a `str`.
     """
-    return ' '.join([_shlex_quote(_os_fsdecode(arg)) for arg in args])
+    return ' '.join([shlex.quote(os.fsdecode(arg)) for arg in args])

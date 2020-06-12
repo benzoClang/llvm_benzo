@@ -18,9 +18,11 @@
 from pathlib import Path
 import datetime
 import logging
+import multiprocessing
 import os
 import shutil
-from typing import cast, Dict, List, Optional, Set
+import subprocess
+from typing import Dict, List, Optional, Set
 
 import benzo_version
 from builder_registry import BuilderRegistry
@@ -28,7 +30,6 @@ import configs
 import constants
 import hosts
 import paths
-import subprocess
 import toolchains
 import utils
 
@@ -59,6 +60,38 @@ class Builder:  # pylint: disable=too-few-public-methods
     def _build_config(self) -> None:
         raise NotImplementedError()
 
+    def _is_cross_compiling(self) -> bool:
+        return self._config.target_os != hosts.build_host()
+
+    @property
+    def cflags(self) -> List[str]:
+        """Additional cflags to use."""
+        return []
+
+    @property
+    def cxxflags(self) -> List[str]:
+        """Additional cxxflags to use."""
+        return self.cflags
+
+    @property
+    def ldflags(self) -> List[str]:
+        """Additional ldflags to use."""
+        ldflags = []
+        # When cross compiling, toolchain libs won't work on target arch.
+        if not self._is_cross_compiling():
+            ldflags.append(f'-L{self.toolchain.lib_dir}')
+        return ldflags
+
+    @property
+    def env(self) -> Dict[str, str]:
+        """Environment variables used when building."""
+        return dict(ORIG_ENV)
+
+    @property
+    def toolchain(self) -> toolchains.Toolchain:
+        """Returns the toolchain used for this target."""
+        raise NotImplementedError()
+
     def install(self) -> None:
         """Installs built artifacts."""
 
@@ -70,16 +103,6 @@ class CMakeBuilder(Builder):
     remove_cmake_cache: bool = False
     remove_install_dir: bool = False
     ninja_target: Optional[str] = None
-
-    @property
-    def toolchain(self) -> toolchains.Toolchain:
-        """Returns the toolchain used for this target."""
-        raise NotImplementedError()
-
-    @property
-    def target_os(self) -> hosts.Host:
-        """Returns the target platform for this builder."""
-        return self.config.target_os
 
     @property
     def install_dir(self) -> Path:
@@ -141,33 +164,6 @@ class CMakeBuilder(Builder):
 
     def _get_cmake_system_arch(self) -> str:
         return self._config.target_arch.value
-
-    def _is_cross_compiling(self) -> bool:
-        return self._config.target_os != hosts.build_host()
-
-    @property
-    def cflags(self) -> List[str]:
-        """Additional cflags to use."""
-        return []
-
-    @property
-    def cxxflags(self) -> List[str]:
-        """Additional cxxflags to use."""
-        return self.cflags
-
-    @property
-    def ldflags(self) -> List[str]:
-        """Additional ldflags to use."""
-        ldflags = []
-        # When cross compiling, toolchain libs won't work on target arch.
-        if not self._is_cross_compiling():
-            ldflags.append(f'-L{self.toolchain.lib_dir}')
-        return ldflags
-
-    @property
-    def env(self) -> Dict[str, str]:
-        """Environment variables used when building."""
-        return dict(ORIG_ENV)
 
     @staticmethod
     def _rm_cmake_cache(cache_dir: Path):
@@ -271,7 +267,6 @@ class LLVMRuntimeBuilder(LLVMBaseBuilder):  # pylint: disable=abstract-method
 
     @property
     def toolchain(self) -> toolchains.Toolchain:
-        """Returns the toolchain used for this target."""
         return toolchains.get_runtime_toolchain()
 
     @property
@@ -321,17 +316,12 @@ class LLVMBuilder(LLVMBaseBuilder):
         raise NotImplementedError()
 
     @property
-    def env(self) -> Dict[str, str]:
-        env = super().env
-        return env
-
-    @property
     def cmake_defines(self) -> Dict[str, str]:
         defines = super().cmake_defines
 
-        defines['LLVM_ENABLE_PROJECTS'] = ';'.join(self.llvm_projects)
+        defines['LLVM_ENABLE_PROJECTS'] = ';'.join(sorted(self.llvm_projects))
 
-        defines['LLVM_TARGETS_TO_BUILD'] = ';'.join(self.llvm_targets)
+        defines['LLVM_TARGETS_TO_BUILD'] = ';'.join(sorted(self.llvm_targets))
         defines['LLVM_BUILD_LLVM_DYLIB'] = 'ON'
         defines['CLANG_VENDOR'] = self.clang_vendor
         defines['LLD_VENDOR'] = self.clang_vendor
