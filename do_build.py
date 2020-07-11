@@ -165,7 +165,7 @@ def debug_prefix_flag():
 
 
 def go_bin_dir():
-    return utils.android_path(paths.GO_BIN_PATH)
+    return utils.android_path('prebuilts/go', hosts.build_host().os_tag, 'bin')
 
 
 def update_cmake_sysroot_flags(defines, sysroot):
