@@ -892,16 +892,11 @@ def main():
     # Build the stage1 Clang for the build host
     instrumented = args.build_instrumented
 
-    # llvm-config is required.
-    stage1_build_llvm_tools = instrumented or \
-                              args.debug
-
     stage1 = builders.Stage1Builder()
     stage1.build_name = args.build_name
     stage1.clang_vendor = 'benzoClang'
     stage1.ccache = args.ccache
     stage1.ccache_dir = args.ccache_dir
-    stage1.build_llvm_tools = stage1_build_llvm_tools
     stage1.build_android_targets = args.debug or instrumented
     stage1.build()
     stage1_toolchain = toolchains.get_toolchain_from_builder(stage1)
