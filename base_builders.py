@@ -92,6 +92,13 @@ class Builder:  # pylint: disable=too-few-public-methods
         """Returns the toolchain used for this target."""
         raise NotImplementedError()
 
+    @property
+    def output_toolchain(self) -> toolchains.Toolchain:
+        """Returns the Linux toolchain being built.  Used to install artifacts
+        from this Builder.
+        """
+        return toolchains.get_toolchain_by_name('stage2')
+
     def install(self) -> None:
         """Installs built artifacts."""
 
@@ -286,8 +293,8 @@ class LLVMRuntimeBuilder(LLVMBaseBuilder):  # pylint: disable=abstract-method
     def install_dir(self) -> Path:
         arch = self._config.target_arch
         if self._config.platform:
-            return self.toolchain.resource_dir / arch.value
-        return self.toolchain.path / 'runtimes_ndk_cxx' / arch.value
+            return self.output_toolchain.resource_dir / arch.value
+        return self.output_toolchain.path / 'runtimes_ndk_cxx' / arch.value
 
     @property
     def output_dir(self) -> Path:
