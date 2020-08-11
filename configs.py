@@ -16,10 +16,13 @@
 """APIs for build configurations."""
 
 from pathlib import Path
-from typing import List, Optional
+from typing import Dict, List, Optional
+import functools
+import json
 
 import hosts
 import paths
+import toolchains
 
 class Config:
     """Base configuration."""
@@ -27,14 +30,27 @@ class Config:
     name: str
     target_os: hosts.Host
     target_arch: hosts.Arch = hosts.Arch.X86_64
+    sysroot: Optional[Path] = None
 
     """Additional config data that a builder can specify."""
     extra_config = None
 
+    def get_c_compiler(self, toolchain: toolchains.Toolchain) -> Path:
+        """Returns path to c compiler."""
+        return toolchain.cc
+
+    def get_cxx_compiler(self, toolchain: toolchains.Toolchain) -> Path:
+        """Returns path to c++ compiler."""
+        return toolchain.cxx
+
+    def get_linker(self, toolchain: toolchains.Toolchain) -> Optional[Path]:
+        """Returns the path to linker."""
+        return None
+
     @property
     def cflags(self) -> List[str]:
         """Returns a list of flags for c compiler."""
-        raise NotImplementedError()
+        return []
 
     @property
     def cxxflags(self) -> List[str]:
@@ -44,7 +60,11 @@ class Config:
     @property
     def ldflags(self) -> List[str]:
         """Returns a list of flags for static linker."""
-        raise NotImplementedError()
+        return []
+
+    @property
+    def env(self) -> Dict[str, str]:
+        return {}
 
     def __str__(self) -> str:
         return self.target_os.name
@@ -52,9 +72,12 @@ class Config:
     @property
     def output_suffix(self) -> str:
         """The suffix of output directory name."""
-        raise NotImplementedError()
+        return f'-{self.target_os.value}'
 
-    sysroot: Optional[Path] = None
+    @property
+    def cmake_defines(self) -> Dict[str, str]:
+        """Additional defines for cmake."""
+        return dict()
 
 
 class _BaseConfig(Config):  # pylint: disable=abstract-method
@@ -89,9 +112,19 @@ class _BaseConfig(Config):  # pylint: disable=abstract-method
         """Paths to libraries used in ldflags."""
         return []
 
+
+class DarwinConfig(_BaseConfig):
+    """Configuration for Darwin targets."""
+
+    target_os: hosts.Host = hosts.Host.Darwin
+    use_lld: bool = False
+
     @property
-    def output_suffix(self) -> str:
-        return f'-{self.target_os.value}'
+    def cflags(self) -> List[str]:
+        cflags = super().cflags
+        # Fails if an API used is newer than what specified in -mmacosx-version-min.
+        cflags.append('-Werror=unguarded-availability')
+        return cflags
 
 
 class _GccConfig(_BaseConfig):  # pylint: disable=abstract-method

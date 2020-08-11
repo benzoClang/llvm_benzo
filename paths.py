@@ -17,16 +17,21 @@
 
 import os
 from pathlib import Path
+import string
+from typing import Optional
 
+import benzo_version
 import constants
 import hosts
 
-ANDROID_DIR: Path = Path(__file__).resolve().parents[2]
+SCRIPTS_DIR: Path = Path(__file__).resolve()
+ANDROID_DIR: Path = SCRIPTS_DIR.parents[2]
 OUT_DIR: Path = Path(os.environ.get('OUT_DIR', ANDROID_DIR / 'out')).resolve()
 SYSROOTS: Path = OUT_DIR / 'sysroots'
 LLVM_PATH: Path = ANDROID_DIR / 'toolchain' / 'llvm-project'
 PREBUILTS_DIR: Path = ANDROID_DIR / 'prebuilts'
 EXTERNAL_DIR: Path = ANDROID_DIR / 'external'
+TOOLCHAIN_DIR: Path = ANDROID_DIR / 'toolchain'
 
 CLANG_PREBUILT_DIR: Path = (PREBUILTS_DIR / 'clang' / 'host' / hosts.build_host().os_tag
                             / constants.CLANG_PREBUILT_VERSION)
@@ -35,7 +40,7 @@ BIONIC_HEADERS: Path = ANDROID_DIR / 'bionic' / 'libc' / 'include'
 
 CMAKE_BIN_PATH: Path = PREBUILTS_DIR / 'cmake' / hosts.build_host().os_tag / 'bin' / 'cmake'
 NINJA_BIN_PATH: Path = PREBUILTS_DIR / 'cmake' / hosts.build_host().os_tag / 'bin' / 'ninja'
-GO_BIN_PATH: Path = PREBUILTS_DIR / 'go' / hosts.build_host().os_tag / 'bin' / 'go'
+GO_BIN_PATH: Path = PREBUILTS_DIR / 'go' / hosts.build_host().os_tag / 'bin'
 
 NDK_BASE: Path = ANDROID_DIR / 'toolchain' / 'prebuilts' /'ndk' / constants.NDK_VERSION
 NDK_LIBCXX_HEADERS: Path = NDK_BASE / 'sources' / 'cxx-stl' / 'llvm-libc++'/ 'include'
@@ -43,6 +48,19 @@ NDK_LIBCXXABI_HEADERS: Path = NDK_BASE / 'sources' / 'cxx-stl' / 'llvm-libc++abi
 NDK_SUPPORT_HEADERS: Path = NDK_BASE / 'sources' / 'android' / 'support' / 'include'
 
 GCC_ROOT: Path = PREBUILTS_DIR / 'gcc' / hosts.build_host().os_tag
+
+def pgo_profdata_filename(llvm_next: bool=False) -> str:
+    svn_revision = benzo_version.svn_revision
+    base_revision = svn_revision.rstrip(string.ascii_lowercase)
+    return f'{base_revision}.profdata'
+
+def pgo_profdata_file(profdata_file) -> Optional[Path]:
+    profile = (PREBUILTS_DIR / 'clang' / 'host' / 'linux-x86' / 'profiles' /
+               profdata_file)
+    return profile if profile.exists() else None
+
+def get_package_install_path(host: hosts.Host, package_name):
+    return OUT_DIR / 'install' / host.os_tag / package_name
 
 def get_python_dir(host: hosts.Host) -> Path:
     """Returns the path to python for a host."""

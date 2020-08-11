@@ -15,6 +15,7 @@
 #
 """Builders for various build tools and build systems."""
 
+import functools
 from pathlib import Path
 import datetime
 import logging
@@ -22,7 +23,7 @@ import multiprocessing
 import os
 import shutil
 import subprocess
-from typing import Dict, List, Optional, Set
+from typing import Dict, List, Optional, Set, Sequence
 
 import benzo_version
 from builder_registry import BuilderRegistry
@@ -44,8 +45,10 @@ class Builder:  # pylint: disable=too-few-public-methods
     name: str = ""
     config_list: List[configs.Config]
 
-    def __init__(self) -> None:
-        self._config: configs.Config
+    def __init__(self, config_list: Optional[Sequence[configs.Config]]=None) -> None:
+        if config_list:
+            self.config_list = list(config_list)
+        self._config: configs.Config = self.config_list[0]
 
     @BuilderRegistry.register_and_build
     def build(self) -> None:
@@ -62,6 +65,14 @@ class Builder:  # pylint: disable=too-few-public-methods
 
     def _is_cross_compiling(self) -> bool:
         return self._config.target_os != hosts.build_host()
+
+    @property
+    def _cc(self) -> Path:
+        return self._config.get_c_compiler(self.toolchain)
+
+    @property
+    def _cxx(self) -> Path:
+        return self._config.get_cxx_compiler(self.toolchain)
 
     @property
     def cflags(self) -> List[str]:
@@ -85,7 +96,11 @@ class Builder:  # pylint: disable=too-few-public-methods
     @property
     def env(self) -> Dict[str, str]:
         """Environment variables used when building."""
-        return dict(ORIG_ENV)
+        env = dict(ORIG_ENV)
+        env.update(self._config.env)
+        paths = [self._config.env.get('PATH'), ORIG_ENV.get('PATH')]
+        env['PATH'] = os.pathsep.join(p for p in paths if p)
+        return env
 
     @property
     def toolchain(self) -> toolchains.Toolchain:
@@ -109,17 +124,23 @@ class CMakeBuilder(Builder):
     src_dir: Path
     remove_cmake_cache: bool = False
     remove_install_dir: bool = False
-    ninja_target: Optional[str] = None
-
-    @property
-    def install_dir(self) -> Path:
-        """Returns the path this target will be installed to."""
-        raise NotImplementedError()
+    ninja_targets: List[str] = []
 
     @property
     def output_dir(self) -> Path:
         """The path for intermediate results."""
-        return paths.OUT_DIR / self.name
+        return paths.OUT_DIR / 'lib' / (f'{self.name}{self._config.output_suffix}')
+
+    @property
+    def install_dir(self) -> Path:
+        """Returns the path this target will be installed to."""
+        output_dir = self.output_dir
+        return output_dir.parent / (output_dir.name + '-install')
+
+    @property
+    def toolchain(self) -> toolchains.Toolchain:
+        """Returns the toolchain used for this target."""
+        return toolchains.get_runtime_toolchain()
 
     @property
     def cmake_defines(self) -> Dict[str, str]:
@@ -132,8 +153,8 @@ class CMakeBuilder(Builder):
         ldflags_str = ' '.join(ldflags)
         cxx_std_str = '17'
         defines: Dict[str, str] = {
-            'CMAKE_C_COMPILER': str(self.toolchain.cc),
-            'CMAKE_CXX_COMPILER': str(self.toolchain.cxx),
+            'CMAKE_C_COMPILER': str(self._cc),
+            'CMAKE_CXX_COMPILER': str(self._cxx),
             'CMAKE_CXX_STANDARD':  cxx_std_str,
 
             'CMAKE_C_COMPILER': str(self.toolchain.cc),
@@ -144,7 +165,7 @@ class CMakeBuilder(Builder):
             'CMAKE_OBJCOPY': str(self.toolchain.objcopy),
             'CMAKE_OBJDUMP': str(self.toolchain.objdump),
             'CMAKE_RANLIB': str(self.toolchain.ranlib),
-            'CMAKE_RC': str(self.toolchain.rc),
+            'CMAKE_RC_COMPILER': str(self.toolchain.rc),
             'CMAKE_READELF': str(self.toolchain.readelf),
             'CMAKE_STRIP': str(self.toolchain.strip),
             'CMAKE_MT': str(self.toolchain.mt),
@@ -166,7 +187,12 @@ class CMakeBuilder(Builder):
             'CMAKE_FIND_ROOT_PATH_MODE_LIBRARY': 'ONLY',
             'CMAKE_FIND_ROOT_PATH_MODE_PACKAGE': 'ONLY',
             'CMAKE_FIND_ROOT_PATH_MODE_PROGRAM': 'NEVER',
+
+            'CMAKE_POSITION_INDEPENDENT_CODE': 'ON',
         }
+        linker = self._config.get_linker(self.toolchain)
+        if linker:
+            defines['CMAKE_LINKER'] = str(linker)
         if self._config.sysroot:
             defines['CMAKE_SYSROOT'] = str(self._config.sysroot)
         if self._config.target_os == hosts.Host.Android:
@@ -177,6 +203,7 @@ class CMakeBuilder(Builder):
             # Cross compiling
             defines['CMAKE_SYSTEM_NAME'] = self._get_cmake_system_name()
             defines['CMAKE_SYSTEM_PROCESSOR'] = self._get_cmake_system_arch()
+        defines.update(self._config.cmake_defines)
         return defines
 
     def _get_cmake_system_name(self) -> str:
@@ -195,11 +222,13 @@ class CMakeBuilder(Builder):
 
     def _record_cmake_command(self, cmake_cmd: List[str],
                               env: Dict[str, str]) -> None:
-        with open(self.output_dir / 'cmake_invocation.sh', 'w') as outf:
+        script_path = self.output_dir / 'cmake_invocation.sh'
+        with script_path.open('w') as outf:
             for k, v in env.items():
                 if v != ORIG_ENV.get(k):
                     outf.write(f'{k}={v}\n')
             outf.write(utils.list2cmdline(cmake_cmd) + '\n')
+        script_path.chmod(0o755)
 
     def _build_config(self) -> None:
         if self.remove_cmake_cache:
@@ -215,13 +244,13 @@ class CMakeBuilder(Builder):
 
         self.output_dir.mkdir(parents=True, exist_ok=True)
 
-        self._record_cmake_command(cmake_cmd, self.env)
-        utils.check_call(cmake_cmd, cwd=self.output_dir, env=self.env)
+        env = self.env
+        self._record_cmake_command(cmake_cmd, env)
+        utils.check_call(cmake_cmd, cwd=self.output_dir, env=env)
 
         ninja_cmd: List[str] = [str(paths.NINJA_BIN_PATH)]
-        if self.ninja_target:
-            ninja_cmd.append(self.ninja_target)
-        utils.check_call(ninja_cmd, cwd=self.output_dir, env=self.env)
+        ninja_cmd.extend(self.ninja_targets)
+        utils.check_call(ninja_cmd, cwd=self.output_dir, env=env)
 
         self.install_config()
 
@@ -297,10 +326,6 @@ class LLVMRuntimeBuilder(LLVMBaseBuilder):  # pylint: disable=abstract-method
         return self.output_toolchain.path / 'runtimes_ndk_cxx' / arch.value
 
     @property
-    def output_dir(self) -> Path:
-        return paths.OUT_DIR / 'lib' / (f'{self.name}{self._config.output_suffix}')
-
-    @property
     def cmake_defines(self) -> Dict[str, str]:
         defines: Dict[str, str] = super().cmake_defines
         defines['LLVM_CONFIG_PATH'] = str(self.toolchain.path /
@@ -313,6 +338,7 @@ class LLVMBuilder(LLVMBaseBuilder):
 
     src_dir: Path = paths.LLVM_PATH / 'llvm'
     config_list: List[configs.Config]
+    build_tags: Optional[List[str]] = None
     clang_vendor: str
     enable_assertions: bool = False
     toolchain_name: str
@@ -324,6 +350,10 @@ class LLVMBuilder(LLVMBaseBuilder):
     @property
     def install_dir(self) -> Path:
         return paths.OUT_DIR / f'{self.name}-install'
+
+    @property
+    def output_dir(self) -> Path:
+        return paths.OUT_DIR / self.name
 
     @property
     def llvm_projects(self) -> Set[str]:
@@ -344,6 +374,11 @@ class LLVMBuilder(LLVMBaseBuilder):
         defines['LLVM_TARGETS_TO_BUILD'] = ';'.join(sorted(self.llvm_targets))
         defines['LLVM_BUILD_LLVM_DYLIB'] = 'ON'
 
+        if self.build_tags:
+            tags_str = ''.join(tag + ', ' for tag in self.build_tags)
+        else:
+            tags_str = ''
+
         defines['CLANG_VENDOR'] = self.clang_vendor
         defines['LLD_VENDOR'] = self.clang_vendor
         defines['LLVM_BINUTILS_INCDIR'] = str(paths.ANDROID_DIR / 'toolchain' /
@@ -352,3 +387,8 @@ class LLVMBuilder(LLVMBaseBuilder):
         defines['LLVM_BUILD_RUNTIME'] = 'ON'
 
         return defines
+
+    @functools.cached_property
+    def installed_toolchain(self) -> toolchains.Toolchain:
+        """Gets the built Toolchain."""
+        return toolchains.Toolchain(self.install_dir, self.output_dir)
