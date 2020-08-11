@@ -871,7 +871,8 @@ def main():
             args.build_name,
             hosts.build_host(),
             dist_dir,
-            strip=do_strip_host_package)
+            strip=do_strip_host_package,
+            create_tar=args.create_tar)
 
     print ('')
     print ('Build took {0} to complete.'.format(datetime.datetime.now() - start_time))
