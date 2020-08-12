@@ -16,15 +16,14 @@
 #
 """Util to create a mapfile."""
 
+from base_builders import Builder
 from pathlib import Path
 import sys
 import subprocess
-import toolchains
 
 def create_map_file(lib_file: Path, map_file: Path) -> None:
     """Creates a map_file for lib_file."""
-    runtime_toolchain = toolchains.get_runtime_toolchain()
-    runtime_nm = runtime_toolchain.path / 'bin' / 'llvm-nm'
+    runtime_nm = Builder.toolchain.nm
     symbols = subprocess.check_output([runtime_nm, '--extern-only', '--defined-only',
                                       str(lib_file)], text=True)
     with map_file.open('w') as output:
