@@ -42,14 +42,6 @@ from version import Version
 
 ORIG_ENV = dict(os.environ)
 
-# Remove GOMA from our environment for building anything from stage2 onwards,
-# since it is using a non-GOMA compiler (from stage1) to do the compilation.
-USE_GOMA_FOR_STAGE1 = False
-if ('USE_GOMA' in ORIG_ENV) and (ORIG_ENV['USE_GOMA'] == 'true'):
-    USE_GOMA_FOR_STAGE1 = True
-    del ORIG_ENV['USE_GOMA']
-
-
 def logger():
     """Returns the module level logger."""
     return logging.getLogger(__name__)
@@ -495,7 +487,6 @@ def main():
     stage1.ccache = args.ccache
     stage1.ccache_dir = args.ccache_dir
     stage1.build_android_targets = args.debug or instrumented
-    stage1.use_goma_for_stage1 = USE_GOMA_FOR_STAGE1
     stage1.build()
     set_default_toolchain(stage1.installed_toolchain)
 
