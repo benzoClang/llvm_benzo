@@ -19,8 +19,21 @@ import paths
 import re
 import utils
 
+_llvm_next = True
+
 _patch_level = '0'
 _svn_revision = 'r468218'
+
+
+def set_llvm_next(llvm_next: bool):
+    # pylint:disable=global-statement
+    global _llvm_next
+    _llvm_next = llvm_next
+
+
+def is_llvm_next() -> bool:
+    return _llvm_next
+
 
 def get_svn_revision():
     if _svn_revision != '':
@@ -29,15 +42,18 @@ def get_svn_revision():
     revision = utils.check_output(['sh', rev_script]).strip()
     return revision
 
-def get_patch_level():
-    if _patch_level != '':
-        return _patch_level
-    return 0
 
-# Get the numeric portion of the version number we are working with.
-# Strip the leading 'r' and possible letter (and number) suffix,
-# e.g., r383902b1 => 383902
+def get_patch_level():
+    if _llvm_next:
+        return None
+    return _patch_level
+
+
 def get_svn_revision_number():
+    """Get the numeric portion of the version number we are working with.
+       Strip the leading 'r' and possible letter (and number) suffix,
+       e.g., r383902b1 => 383902
+    """
     svn_version = get_svn_revision()
     found = re.match(r'r(\d+)([a-z]\d*)?$', svn_version)
     if not found:

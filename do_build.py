@@ -635,6 +635,8 @@ def main():
 
     host_configs = [configs.host_config()]
 
+    benzo_version.set_llvm_next(True)
+
     need_host = ('linux' not in args.no_build)
 
     logging.basicConfig(level=logging.DEBUG)
