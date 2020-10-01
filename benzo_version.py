@@ -16,6 +16,7 @@
 #
 
 import paths
+import re
 import utils
 
 _patch_level = '0'
@@ -32,3 +33,13 @@ def get_patch_level():
     if _patch_level != '':
         return _patch_level
     return 0
+
+# Get the numeric portion of the version number we are working with.
+# Strip the leading 'r' and possible letter (and number) suffix,
+# e.g., r383902b1 => 383902
+def get_svn_revision_number():
+    svn_version = get_svn_revision()
+    found = re.match(r'r(\d+)([a-z]\d*)?$', svn_version)
+    if not found:
+        raise RuntimeError(f'Invalid svn revision: {svn_version}')
+    return found.group(1)
