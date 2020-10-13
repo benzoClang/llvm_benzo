@@ -161,6 +161,12 @@ class LinuxConfig(_GccConfig):
     gcc_triple: str = 'x86_64-linux'
     gcc_ver: str = '4.8.3'
 
+    @property
+    def ldflags(self) -> List[str]:
+        return super().ldflags + [
+            '-Wl,--hash-style=both',
+        ]
+
 
 class AndroidConfig(_BaseConfig):
     """Config for Android targets."""
