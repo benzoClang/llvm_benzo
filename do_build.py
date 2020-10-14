@@ -488,7 +488,7 @@ def main():
     instrumented = args.build_instrumented
 
     stage1 = builders.Stage1Builder()
-    stage1.build_name = args.build_name
+    stage1.build_name = 'stage1'
     stage1.clang_vendor = 'benzoClang'
     stage1.ccache = args.ccache
     stage1.ccache_dir = args.ccache_dir
