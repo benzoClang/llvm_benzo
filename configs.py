@@ -112,6 +112,11 @@ class _BaseConfig(Config):  # pylint: disable=abstract-method
         """Paths to libraries used in ldflags."""
         return []
 
+    def get_linker(self, toolchain: toolchains.Toolchain) -> Optional[Path]:
+        if self.use_lld:
+            return toolchain.lld
+        return None
+
 
 class DarwinConfig(_BaseConfig):
     """Configuration for Darwin targets."""
