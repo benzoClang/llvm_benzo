@@ -27,4 +27,6 @@ var llvmNextFlags = []string{
 	"-fcommon", // http://b/151457797
 }
 
-var llvmNextPostFlags = []string{}
+var llvmNextPostFlags = []string{
+	"-fno-sanitize=unsigned-shift-base", // http://b/171275751
+}
