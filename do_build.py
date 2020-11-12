@@ -64,7 +64,8 @@ def extract_profdata() -> Optional[Path]:
 
 def build_runtimes():
     builders.SysrootsBuilder().build()
-
+    builders.BuiltinsBuilder().build()
+    builders.LibUnwindBuilder().build()
     builders.PlatformLibcxxAbiBuilder().build()
     builders.CompilerRTBuilder().build()
     builders.CompilerRTHostI386Builder().build()
