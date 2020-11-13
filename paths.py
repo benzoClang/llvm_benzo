@@ -40,18 +40,18 @@ CLANG_PREBUILT_DIR: Path = (PREBUILTS_DIR / 'clang' / 'host' / hosts.build_host(
 CLANG_PREBUILT_LIBCXX_HEADERS: Path = CLANG_PREBUILT_DIR / 'include' / 'c++' / 'v1'
 BIONIC_HEADERS: Path = ANDROID_DIR / 'bionic' / 'libc' / 'include'
 
+GO_BIN_PATH: Path = PREBUILTS_DIR / 'go' / hosts.build_host().os_tag / 'bin'
 CMAKE_BIN_PATH: Path = PREBUILTS_DIR / 'cmake' / hosts.build_host().os_tag / 'bin' / 'cmake'
 NINJA_BIN_PATH: Path = PREBUILTS_DIR / 'cmake' / hosts.build_host().os_tag / 'bin' / 'ninja'
-GO_BIN_PATH: Path = PREBUILTS_DIR / 'go' / hosts.build_host().os_tag / 'bin'
 
-NDK_BASE: Path = ANDROID_DIR / 'toolchain' / 'prebuilts' /'ndk' / constants.NDK_VERSION
+NDK_BASE: Path = TOOLCHAIN_DIR / 'prebuilts' /'ndk' / constants.NDK_VERSION
 NDK_LIBCXX_HEADERS: Path = NDK_BASE / 'sources' / 'cxx-stl' / 'llvm-libc++'/ 'include'
 NDK_LIBCXXABI_HEADERS: Path = NDK_BASE / 'sources' / 'cxx-stl' / 'llvm-libc++abi' / 'include'
 NDK_SUPPORT_HEADERS: Path = NDK_BASE / 'sources' / 'android' / 'support' / 'include'
 
 GCC_ROOT: Path = PREBUILTS_DIR / 'gcc' / hosts.build_host().os_tag
 
-def pgo_profdata_filename(llvm_next: bool=False) -> str:
+def pgo_profdata_filename() -> str:
     svn_revision = benzo_version.svn_revision
     base_revision = svn_revision.rstrip(string.ascii_lowercase)
     return f'{base_revision}.profdata'

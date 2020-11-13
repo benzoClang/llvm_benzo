@@ -34,7 +34,6 @@ import paths
 import toolchains
 import utils
 
-ORIG_ENV = dict(os.environ)
 
 def logger():
     """Returns the module level logger."""
@@ -106,9 +105,9 @@ class Builder:  # pylint: disable=too-few-public-methods
     @property
     def env(self) -> Dict[str, str]:
         """Environment variables used when building."""
-        env = dict(ORIG_ENV)
+        env = dict(utils.ORIG_ENV)
         env.update(self._config.env)
-        paths = [self._config.env.get('PATH'), ORIG_ENV.get('PATH')]
+        paths = [self._config.env.get('PATH'), utils.ORIG_ENV.get('PATH')]
         env['PATH'] = os.pathsep.join(p for p in paths if p)
         return env
 
@@ -218,7 +217,7 @@ class CMakeBuilder(Builder):
         script_path = self.output_dir / 'cmake_invocation.sh'
         with script_path.open('w') as outf:
             for k, v in env.items():
-                if v != ORIG_ENV.get(k):
+                if v != utils.ORIG_ENV.get(k):
                     outf.write(f'{k}={v}\n')
             outf.write(utils.list2cmdline(cmake_cmd) + '\n')
         script_path.chmod(0o755)

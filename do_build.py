@@ -40,8 +40,6 @@ import toolchains
 import utils
 from version import Version
 
-ORIG_ENV = dict(os.environ)
-
 def logger():
     """Returns the module level logger."""
     return logging.getLogger(__name__)
@@ -110,7 +108,7 @@ def install_wrappers(llvm_install_path: Path) -> None:
 
 # Normalize host libraries (libLLVM, libclang, libc++, libc++abi) so that there
 # is just one library, whose SONAME entry matches the actual name.
-def normalize_llvm_host_libs(install_dir: Path, host: hosts.Host, version: Version):
+def normalize_llvm_host_libs(install_dir: Path, host: hosts.Host, version: Version) -> None:
     if host.is_linux:
         libs = {'libLLVM': 'libLLVM-{version}git.so',
                 'libclang': 'libclang.so.{version}git',
@@ -203,7 +201,7 @@ def remove_static_libraries(static_lib_dir, necessary_libs=None):
 def package_toolchain(toolchain_builder: LLVMBuilder,
                       necessary_bin_files: Optional[Set[str]]=None,
                       strip=True, create_tar=True):
-    dist_dir = Path(ORIG_ENV.get('DIST_DIR', paths.OUT_DIR))
+    dist_dir = Path(utils.ORIG_ENV.get('DIST_DIR', paths.OUT_DIR))
     build_dir = toolchain_builder.install_dir
     host = toolchain_builder.config_list[0].target_os
     build_name = toolchain_builder.build_name
@@ -350,12 +348,6 @@ def parse_args():
     parser = argparse.ArgumentParser()
 
     parser.add_argument(
-        '-v',
-        '--verbose',
-        action='count',
-        default=0,
-        help='Increase log level. Defaults to logging.INFO.')
-    parser.add_argument(
         '--build-name', default='benzo', help='Release name for the package.')
 
     parser.add_argument(
@@ -466,11 +458,7 @@ def main():
 
     need_host = ('linux' not in args.no_build)
 
-    log_levels = [logging.INFO, logging.DEBUG]
-    verbosity = min(args.verbose, len(log_levels) - 1)
-    log_level = log_levels[verbosity]
-    logging.basicConfig(level=log_level)
-
+    logging.basicConfig(level=logging.DEBUG)
     if not hosts.build_host().is_linux:
         raise RuntimeError('Only building on Linux is supported')
 
@@ -491,7 +479,7 @@ def main():
     set_default_toolchain(stage1.installed_toolchain)
 
     if need_host:
-        profdata_filename = paths.pgo_profdata_filename(False)
+        profdata_filename = paths.pgo_profdata_filename()
         profdata = paths.pgo_profdata_file(profdata_filename)
 
         stage2 = builders.Stage2Builder()

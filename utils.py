@@ -15,6 +15,7 @@
 #
 # pylint: disable=not-callable
 
+import contextlib
 import datetime
 import logging
 import os
@@ -22,45 +23,41 @@ import shlex
 import shutil
 import stat
 import subprocess
-from typing import List
+from typing import Dict, List
 
 import constants
+
+
+ORIG_ENV = dict(os.environ)
 
 def logger():
     """Returns the module level logger."""
     return logging.getLogger(__name__)
 
 
-def unchecked_call(cmd, *args, **kwargs):
-    """subprocess.call with logging."""
-    logger().info('call:%s %s',
-                  datetime.datetime.now().strftime("%H:%M:%S"),
-                  list2cmdline(cmd))
-    subprocess.call(cmd, *args, **kwargs)
-
-
 def subprocess_run(cmd, *args, **kwargs):
     """subprocess.run with logging."""
-    logger().info('subprocess.run:%s %s',
+    logger().debug('subprocess.run:%s %s',
                   datetime.datetime.now().strftime("%H:%M:%S"),
                   list2cmdline(cmd))
+    if kwargs.pop('dry_run', None):
+        return None
     return subprocess.run(cmd, *args, **kwargs, text=True)
+
+
+def unchecked_call(cmd, *args, **kwargs):
+    """subprocess.call with logging."""
+    return subprocess_run(cmd, *args, **kwargs).returncode
 
 
 def check_call(cmd, *args, **kwargs):
     """subprocess.check_call with logging."""
-    logger().info('check_call:%s %s',
-                  datetime.datetime.now().strftime("%H:%M:%S"),
-                  list2cmdline(cmd))
-    subprocess.check_call(cmd, *args, **kwargs)
+    return subprocess_run(cmd, *args, **kwargs, check=True)
 
 
 def check_output(cmd, *args, **kwargs):
     """subprocess.check_output with logging."""
-    logger().info('check_output:%s %s',
-                  datetime.datetime.now().strftime("%H:%M:%S"),
-                  list2cmdline(cmd))
-    return subprocess.check_output(cmd, *args, **kwargs, text=True)
+    return subprocess_run(cmd, *args, **kwargs, check=True, stdout=subprocess.PIPE).stdout
 
 def list2cmdline(args: List[str]) -> str:
     """Joins arguments into a Bourne-shell cmdline.
@@ -73,3 +70,13 @@ def list2cmdline(args: List[str]) -> str:
     escaping rather than MSVCRT escaping.
     """
     return ' '.join([shlex.quote(os.fsdecode(arg)) for arg in args])
+
+
+@contextlib.contextmanager
+def chdir_context(directory):
+    prev_dir = os.getcwd()
+    try:
+        os.chdir(directory)
+        yield
+    finally:
+        os.chdir(prev_dir)
