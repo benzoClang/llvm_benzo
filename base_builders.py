@@ -23,7 +23,7 @@ import multiprocessing
 import os
 import shutil
 import subprocess
-from typing import Dict, List, Optional, Set, Sequence
+from typing import cast, Dict, List, Optional, Set, Sequence
 
 import benzo_version
 from builder_registry import BuilderRegistry
@@ -37,6 +37,70 @@ import utils
 def logger():
     """Returns the module level logger."""
     return logging.getLogger(__name__)
+
+
+class LibInfo:
+    """An interface to get information of a library."""
+
+    name: str
+    _config: configs.Config
+
+    lib_version: str
+    static_lib: bool = False
+
+    @property
+    def install_dir(self) -> Path:
+        raise NotImplementedError()
+
+    @property
+    def _lib_names(self) -> List[str]:
+        return [self.name]
+
+    @property
+    def include_dir(self) -> Path:
+        """Path to headers."""
+        return self.install_dir / 'include'
+
+    @property
+    def _lib_suffix(self) -> str:
+        if self.static_lib:
+            return '.a'
+        return {
+            hosts.Host.Linux: f'.so.{self.lib_version}',
+        }[self._config.target_os]
+
+    @property
+    def link_libraries(self) -> List[Path]:
+        """Path to the libraries used when linking."""
+        suffix = self._lib_suffix
+        return list(self.install_dir / 'lib' / f'{name}{suffix}' for name in self._lib_names)
+
+    @property
+    def install_libraries(self) -> List[Path]:
+        """Path to the libraries to install."""
+        if self.static_lib:
+            return []
+        return self.link_libraries
+
+    @property
+    def symlinks(self) -> List[Path]:
+        """List of symlinks to the library that may need to be installed."""
+        return []
+
+    def update_lib_id(self) -> None:
+        """Util function to update lib paths on mac."""
+        if self.static_lib:
+            return
+        if not self._config.target_os.is_darwin:
+            return
+        for lib in self.link_libraries:
+            # Update LC_ID_DYLIB, so that users of the library won't link with absolute path.
+            utils.check_call(['install_name_tool', '-id', f'@rpath/{lib.name}', str(lib)])
+            # The lib may already reference other libs.
+            for other_lib in self.link_libraries:
+                utils.check_call(['install_name_tool', '-change', str(other_lib),
+                                  f'@rpath/{other_lib.name}', str(lib)])
+
 
 class Builder:  # pylint: disable=too-few-public-methods
     """Base builder type."""
@@ -112,6 +176,102 @@ class Builder:  # pylint: disable=too-few-public-methods
 
     def install(self) -> None:
         """Installs built artifacts."""
+
+
+class AutoconfBuilder(Builder):
+    """Builder for autoconf targets."""
+    src_dir: Path
+    remove_install_dir: bool = True
+
+    @property
+    def output_dir(self) -> Path:
+        """The path for intermediate results."""
+        return paths.OUT_DIR / 'lib' / (f'{self.name}{self._config.output_suffix}')
+
+    @property
+    def install_dir(self) -> Path:
+        """Returns the path this target will be installed to."""
+        output_dir = self.output_dir
+        return output_dir.parent / (output_dir.name + '-install')
+
+    @property
+    def cflags(self) -> List[str]:
+        cflags = super().cflags
+        cflags.append('-fPIC')
+        cflags.append('-Wno-unused-command-line-argument')
+        if self._config.sysroot:
+            cflags.append(f'--sysroot={self._config.sysroot}')
+        return cflags
+
+    @property
+    def cxxflags(self) -> List[str]:
+        cxxflags = super().cxxflags
+        cxxflags.append('-stdlib=libc++')
+        return cxxflags
+
+    @property
+    def ldflags(self) -> List[str]:
+        ldflags = super().ldflags
+        if self._config.target_os.is_linux:
+            ldflags.append('-Wl,-rpath,$ORIGIN/../lib64')
+        return ldflags
+
+    @property
+    def config_flags(self) -> List[str]:
+        """Parameters to configure."""
+        return []
+
+    def _touch_src_dir(self, files) -> None:
+        for file in files:
+            file_path = self.src_dir / file
+            if file_path.is_file():
+                file_path.touch(exist_ok=True)
+
+    def _touch_autoconfig_files(self) -> None:
+        """Touches configure files to prevent autoreconf."""
+        files_to_touch = ["aclocal.m4", "configure", "Makefile.am"]
+        self._touch_src_dir(files_to_touch)
+        self._touch_src_dir(self.src_dir.glob('**/*.in'))
+
+    def _build_config(self) -> None:
+        logger().info('Building %s for %s', self.name, self._config)
+
+        if self.remove_install_dir and self.install_dir.exists():
+            shutil.rmtree(self.install_dir)
+        self.output_dir.mkdir(parents=True, exist_ok=True)
+        self._touch_autoconfig_files()
+
+        # Write flags to files, to avoid various escaping issues.
+        cflags = self._config.cflags + self.cflags
+        cxxflags = self._config.cxxflags + self.cxxflags
+        ldflags = self._config.ldflags + self.ldflags
+        cflags_file = self.output_dir / 'cflags'
+        cxxflags_file = self.output_dir / 'cxxflags'
+        with cflags_file.open('w') as argfile:
+            argfile.write(' '.join(cflags + ldflags))
+        with cxxflags_file.open('w') as argfile:
+            argfile.write(' '.join(cxxflags + ldflags))
+
+        env = self.env
+        env['CC'] = f'{self._cc} @{cflags_file}'
+        env['CXX'] = f'{self._cxx} @{cxxflags_file}'
+
+        config_cmd = [str(self.src_dir / 'configure'), f'--prefix={self.install_dir}']
+        config_cmd.extend(self.config_flags)
+        utils.create_script(self.output_dir / 'config_invocation.sh', config_cmd, env)
+        utils.check_call(config_cmd, cwd=self.output_dir, env=env)
+
+        make_cmd = [str(paths.MAKE_BIN_PATH), f'-j{multiprocessing.cpu_count()}']
+        utils.check_call(make_cmd, cwd=self.output_dir)
+
+        self.install_config()
+
+    def install_config(self) -> None:
+        """Installs built artifacts for current config."""
+        install_cmd = [str(paths.MAKE_BIN_PATH), 'install']
+        utils.check_call(install_cmd, cwd=self.output_dir)
+        if isinstance(self, LibInfo):
+            cast(LibInfo, self).update_lib_id()
 
 
 class CMakeBuilder(Builder):
@@ -345,6 +505,14 @@ class LLVMBuilder(LLVMBaseBuilder):
     enable_assertions: bool = False
     toolchain_name: str
 
+    # lldb options.
+    build_lldb: bool = True
+    swig_executable: Optional[Path] = None
+    libxml2: Optional[LibInfo] = None
+    liblzma: Optional[LibInfo] = None
+    libedit: Optional[LibInfo] = None
+    libncurses: Optional[LibInfo] = None
+
     @property
     def install_dir(self) -> Path:
         return paths.OUT_DIR / f'{self.name}-install'
@@ -362,6 +530,63 @@ class LLVMBuilder(LLVMBaseBuilder):
     def llvm_targets(self) -> Set[str]:
         """Returns llvm target archtects to build."""
         raise NotImplementedError()
+
+    def _set_lldb_flags(self, target: hosts.Host, defines: Dict[str, str]) -> None:
+        """Sets cmake defines for lldb."""
+        defines['LLDB_ENABLE_LUA'] = 'OFF'
+
+        if self.swig_executable:
+            defines['SWIG_EXECUTABLE'] = str(self.swig_executable)
+            defines['LLDB_ENABLE_PYTHON'] = 'ON'
+            defines['LLDB_EMBED_PYTHON_HOME'] = 'OFF'
+        else:
+            defines['LLDB_ENABLE_PYTHON'] = 'OFF'
+
+        if self.liblzma:
+            defines['LLDB_ENABLE_LZMA'] = 'ON'
+            defines['LIBLZMA_INCLUDE_DIR'] = str(self.liblzma.include_dir)
+            defines['LIBLZMA_LIBRARY'] = str(self.liblzma.link_libraries[0])
+        else:
+            defines['LLDB_ENABLE_LZMA'] = 'OFF'
+
+        if self.libedit:
+            defines['LLDB_ENABLE_LIBEDIT'] = 'ON'
+            defines['LibEdit_INCLUDE_DIRS'] = str(self.libedit.include_dir)
+            defines['LibEdit_LIBRARIES'] = str(self.libedit.link_libraries[0])
+        else:
+            defines['LLDB_ENABLE_LIBEDIT'] = 'OFF'
+
+        if self.libxml2:
+            defines['LLDB_ENABLE_LIBXML2'] = 'ON'
+        else:
+            defines['LLDB_ENABLE_LIBXML2'] = 'OFF'
+
+        if self.libncurses:
+            defines['LLDB_ENABLE_CURSES'] = 'ON'
+            defines['CURSES_INCLUDE_DIRS'] = str(self.libncurses.include_dir)
+            curses_libs = ';'.join(str(lib) for lib in self.libncurses.link_libraries)
+            defines['CURSES_LIBRARIES'] = curses_libs
+            defines['PANEL_LIBRARIES'] = curses_libs
+        else:
+            defines['LLDB_ENABLE_CURSES'] = 'OFF'
+
+    def _install_lldb_deps(self) -> None:
+        lib_dir = self.install_dir / 'lib64'
+        lib_dir.mkdir(exist_ok=True, parents=True)
+
+        if self.swig_executable:
+            python_prebuilt_dir = paths.get_python_dir(self._config.target_os)
+            python_dest_dir = self.install_dir / 'python3'
+            shutil.copytree(python_prebuilt_dir, python_dest_dir, symlinks=True, dirs_exist_ok=True,
+                            ignore=shutil.ignore_patterns('*.pyc', '__pycache__', 'Android.bp',
+                                                          '.git', '.gitignore'))
+
+        for lib in (self.liblzma, self.libedit, self.libxml2, self.libncurses):
+            if lib:
+                for lib_file in lib.install_libraries:
+                    shutil.copy2(lib_file, lib_dir)
+                for link in lib.symlinks:
+                    shutil.copy2(link, lib_dir, follow_symlinks=False)
 
     @property
     def cmake_defines(self) -> Dict[str, str]:
@@ -386,10 +611,19 @@ class LLVMBuilder(LLVMBaseBuilder):
         # Don't build OCaml bindings
         defines['LLVM_ENABLE_BINDINGS'] = 'OFF'
 
+        # libxml2 is used by lld and lldb.
+        if self.libxml2:
+            defines['LIBXML2_INCLUDE_DIR'] = str(self.libxml2.include_dir)
+            defines['LIBXML2_LIBRARY'] = str(self.libxml2.link_libraries[0])
+
+        if self.build_lldb:
+            self._set_lldb_flags(self._config.target_os, defines)
+
         return defines
 
     def install_config(self) -> None:
         super().install_config()
+        self._install_lldb_deps()
 
     @functools.cached_property
     def installed_toolchain(self) -> toolchains.Toolchain:

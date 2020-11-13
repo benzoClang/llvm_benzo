@@ -23,8 +23,6 @@ THIS_DIR = os.path.realpath(os.path.dirname(__file__))
 def get_host_tag():
     if sys.platform.startswith('linux'):
         return "linux-x86"
-    elif sys.platform.startswith('darwin'):
-        return "darwin-x86"
     else:
         raise RuntimeError('Unsupported host: {}'.format(sys.platform))
 

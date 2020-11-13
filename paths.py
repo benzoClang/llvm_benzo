@@ -43,7 +43,14 @@ BIONIC_HEADERS: Path = ANDROID_DIR / 'bionic' / 'libc' / 'include'
 
 GO_BIN_PATH: Path = PREBUILTS_DIR / 'go' / hosts.build_host().os_tag / 'bin'
 CMAKE_BIN_PATH: Path = PREBUILTS_DIR / 'cmake' / hosts.build_host().os_tag / 'bin' / 'cmake'
-NINJA_BIN_PATH: Path = PREBUILTS_DIR / 'cmake' / hosts.build_host().os_tag / 'bin' / 'ninja'
+MAKE_BIN_PATH: Path = PREBUILTS_DIR / 'build-tools' / hosts.build_host().os_tag / 'bin' / 'make'
+NINJA_BIN_PATH: Path = PREBUILTS_DIR / 'build-tools' / hosts.build_host().os_tag / 'bin' / 'ninja'
+
+LIBNCURSES_SRC_DIR: Path = EXTERNAL_DIR / 'libncurses'
+LIBEDIT_SRC_DIR: Path = EXTERNAL_DIR / 'libedit'
+SWIG_SRC_DIR: Path = EXTERNAL_DIR / 'swig'
+XZ_SRC_DIR: Path = TOOLCHAIN_DIR / 'xz'
+LIBXML2_SRC_DIR: Path = EXTERNAL_DIR / 'libxml2'
 
 NDK_BASE: Path = TOOLCHAIN_DIR / 'prebuilts' /'ndk' / constants.NDK_VERSION
 NDK_LIBCXX_HEADERS: Path = NDK_BASE / 'sources' / 'cxx-stl' / 'llvm-libc++'/ 'include'

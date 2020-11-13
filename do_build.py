@@ -62,7 +62,7 @@ def extract_profdata() -> Optional[Path]:
     return profdata_file
 
 
-def build_runtimes():
+def build_runtimes(build_lldb_server: bool):
     builders.SysrootsBuilder().build()
     builders.BuiltinsBuilder().build()
     builders.LibUnwindBuilder().build()
@@ -70,6 +70,8 @@ def build_runtimes():
     builders.CompilerRTBuilder().build()
     builders.CompilerRTHostI386Builder().build()
     builders.LibOMPBuilder().build()
+    if build_lldb_server:
+        builders.LldbServerBuilder().build()
     # Bug: http://b/64037266. `strtod_l` is missing in NDK r15. This will break
     # libcxx build.
     # build_libcxx(toolchain, version)
@@ -260,8 +262,10 @@ def package_toolchain(toolchain_builder: LLVMBuilder,
         'llvm-cfi-verify',
         'llvm-config',
         'llvm-cov',
+        'llvm-cxxfilt',
         'llvm-dis',
         'llvm-dwarfdump',
+        'llvm-dwp',
         'llvm-lib',
         'llvm-link',
         'llvm-lipo',
@@ -284,11 +288,19 @@ def package_toolchain(toolchain_builder: LLVMBuilder,
         'scan-view',
     }
 
+    if toolchain_builder.build_lldb:
+        necessary_bin_files.update({
+            'lldb-argdumper',
+            'lldb',
+            'lldb.sh',
+        })
+
     # scripts that should not be stripped
     script_bins = {
         'git-clang-format',
         'scan-build',
         'scan-view',
+        'lldb.sh',
     }
 
     bin_dir = install_dir / 'bin'
@@ -313,7 +325,8 @@ def package_toolchain(toolchain_builder: LLVMBuilder,
         if not (bin_dir / necessary_bin_file).is_file():
             raise RuntimeError(f'Did not find {necessary_bin_file} in {bin_dir}')
 
-    necessary_lib_files = {
+    necessary_lib_files = set()
+    necessary_lib_files |= {
         'libc++.a',
         'libc++abi.a',
     }
@@ -348,7 +361,7 @@ def package_toolchain(toolchain_builder: LLVMBuilder,
 
 
 def parse_args():
-    known_components = ('linux')
+    known_components = ('linux', 'lldb')
     known_components_str = ', '.join(known_components)
 
     # Simple argparse.Action to allow comma-separated values (e.g.
@@ -487,6 +500,7 @@ def main():
     do_strip_host_package = do_strip and not args.debug
     do_thinlto = not args.no_lto
     do_ccache = args.ccache
+    build_lldb = 'lldb' not in args.no_build
 
     need_host = ('linux' not in args.no_build)
 
@@ -507,10 +521,19 @@ def main():
     stage1.clang_vendor = 'benzoClang'
     stage1.ccache = args.ccache
     stage1.ccache_dir = args.ccache_dir
+    # Build lldb for lldb-tblgen. It will be used to build lldb-server.
+    stage1.build_lldb = build_lldb
     stage1.build_android_targets = args.debug or instrumented
     stage1.num_jobs = args.jobs
     stage1.build()
     set_default_toolchain(stage1.installed_toolchain)
+
+    if build_lldb:
+        # Swig is needed for host lldb.
+        swig_builder = builders.SwigBuilder()
+        swig_builder.build()
+    else:
+        swig_builder = None
 
     if need_host:
         if not args.no_pgo:
@@ -531,6 +554,27 @@ def main():
         stage2.num_jobs = args.jobs
         stage2.profdata_file = profdata if profdata else None
 
+        libxml2_builder = builders.LibXml2Builder()
+        libxml2_builder.build()
+        stage2.libxml2 = libxml2_builder
+
+        stage2.build_lldb = build_lldb
+        if build_lldb:
+            stage2.swig_executable = swig_builder.install_dir / 'bin' / 'swig'
+
+            xz_builder = builders.XzBuilder()
+            xz_builder.build()
+            stage2.liblzma = xz_builder
+
+            libncurses = builders.LibNcursesBuilder()
+            libncurses.build()
+            stage2.libncurses = libncurses
+
+            libedit_builder = builders.LibEditBuilder()
+            libedit_builder.libncurses = libncurses
+            libedit_builder.build()
+            stage2.libedit = libedit_builder
+
         stage2_tags = []
         # Annotate the version string if there is no profdata.
         if profdata is None:
@@ -543,7 +587,7 @@ def main():
 
         Builder.output_toolchain = stage2.installed_toolchain
         if hosts.build_host().is_linux and do_runtimes:
-            build_runtimes()
+            build_runtimes(build_lldb_server=build_lldb)
 
     if do_package and need_host:
         package_toolchain(

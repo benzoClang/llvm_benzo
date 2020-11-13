@@ -76,6 +76,8 @@ class Stage1Builder(base_builders.LLVMBuilder):
     @property
     def llvm_projects(self) -> Set[str]:
         proj = {'clang', 'lld', 'libcxxabi', 'libcxx', 'compiler-rt'}
+        if self.build_lldb:
+            proj.add('lldb')
         return proj
 
     @property
@@ -136,6 +138,8 @@ class Stage2Builder(base_builders.LLVMBuilder):
     def llvm_projects(self) -> Set[str]:
         proj = {'clang', 'lld', 'libcxxabi', 'libcxx', 'compiler-rt',
                 'clang-tools-extra', 'openmp', 'polly'}
+        if self.build_lldb:
+            proj.add('lldb')
         return proj
 
     @property
@@ -214,6 +218,16 @@ class Stage2Builder(base_builders.LLVMBuilder):
 
     def install_config(self) -> None:
         super().install_config()
+        lldb_wrapper_path = self.install_dir / 'bin' / 'lldb.sh'
+        lib_path_env = 'LD_LIBRARY_PATH'
+        lldb_wrapper_path.write_text(textwrap.dedent(f"""\
+            #!/bin/bash
+            CURDIR=$(cd $(dirname $0) && pwd)
+            export PYTHONHOME="$CURDIR/../python3"
+            export {lib_path_env}="$CURDIR/../python3/lib:${lib_path_env}"
+            "$CURDIR/lldb" "$@"
+        """))
+        lldb_wrapper_path.chmod(0o755)
 
 
 class BuiltinsBuilder(base_builders.LLVMRuntimeBuilder):
@@ -543,6 +557,172 @@ class LibOMPBuilder(base_builders.LLVMRuntimeBuilder):
         dst_dir = self.install_dir
         dst_dir.mkdir(parents=True, exist_ok=True)
         shutil.copy2(src_lib, dst_dir / libname)
+
+
+class LibNcursesBuilder(base_builders.AutoconfBuilder, base_builders.LibInfo):
+    name: str = 'libncurses'
+    src_dir: Path = paths.LIBNCURSES_SRC_DIR
+    config_list: List[configs.Config] = [configs.host_config()]
+    lib_version: str = '6'
+
+    @property
+    def config_flags(self) -> List[str]:
+        return super().config_flags + [
+            '--with-shared',
+        ]
+
+    @property
+    def _lib_names(self) -> List[str]:
+        return ['libncurses', 'libform', 'libpanel']
+
+
+class LibEditBuilder(base_builders.AutoconfBuilder, base_builders.LibInfo):
+    name: str = 'libedit'
+    src_dir: Path = paths.LIBEDIT_SRC_DIR
+    config_list: List[configs.Config] = [configs.host_config()]
+    libncurses: base_builders.LibInfo
+    lib_version: str = '0'
+
+    @property
+    def ldflags(self) -> List[str]:
+        return [
+            f'-L{self.libncurses.link_libraries[0].parent}',
+        ] + super().ldflags
+
+    @property
+    def cflags(self) -> List[str]:
+        flags = []
+        flags.append('-I' + str(self.libncurses.include_dir))
+        flags.append('-I' + str(self.libncurses.include_dir / 'ncurses'))
+        return flags + super().cflags
+
+
+    def build(self) -> None:
+        files: List[Path] = []
+        super().build()
+
+
+class SwigBuilder(base_builders.AutoconfBuilder):
+    name: str = 'swig'
+    src_dir: Path = paths.SWIG_SRC_DIR
+    config_list: List[configs.Config] = [configs.host_config()]
+
+    @property
+    def config_flags(self) -> List[str]:
+        flags = super().config_flags
+        flags.append('--without-pcre')
+        return flags
+
+    @property
+    def ldflags(self) -> List[str]:
+        ldflags = super().ldflags
+        # Point to the libc++.so from the toolchain.
+        ldflags.append(f'-Wl,-rpath,{self.toolchain.lib_dir}')
+        return ldflags
+
+
+class XzBuilder(base_builders.CMakeBuilder, base_builders.LibInfo):
+    name: str = 'liblzma'
+    src_dir: Path = paths.XZ_SRC_DIR
+    config_list: List[configs.Config] = [configs.host_config()]
+    static_lib: bool = True
+
+
+class LibXml2Builder(base_builders.CMakeBuilder, base_builders.LibInfo):
+    name: str = 'libxml2'
+    src_dir: Path = paths.LIBXML2_SRC_DIR
+    config_list: List[configs.Config] = [configs.host_config()]
+    lib_version: str = '2.9.10'
+
+    @contextlib.contextmanager
+    def _backup_file(self, file_to_backup: Path) -> Iterator[None]:
+        backup_file = file_to_backup.parent / (file_to_backup.name + '.bak')
+        if file_to_backup.exists():
+            file_to_backup.rename(backup_file)
+        try:
+            yield
+        finally:
+            if backup_file.exists():
+                backup_file.rename(file_to_backup)
+
+    def build(self) -> None:
+        # The src dir contains configure files for Android platform. Rename them
+        # so that they will not be used during our build.
+        # We don't delete them here because the same libxml2 may be used to build
+        # Android platform later.
+        with self._backup_file(self.src_dir / 'include' / 'libxml' / 'xmlversion.h'):
+            with self._backup_file(self.src_dir / 'config.h'):
+                super().build()
+
+    @property
+    def cmake_defines(self) -> Dict[str, str]:
+        defines = super().cmake_defines
+        defines['LIBXML2_WITH_PYTHON'] = 'OFF'
+        defines['LIBXML2_WITH_PROGRAMS'] = 'OFF'
+        defines['LIBXML2_WITH_LZMA'] = 'OFF'
+        defines['LIBXML2_WITH_ICONV'] = 'OFF'
+        defines['LIBXML2_WITH_ZLIB'] = 'OFF'
+        return defines
+
+    @property
+    def include_dir(self) -> Path:
+        return self.install_dir / 'include' / 'libxml2'
+
+    @property
+    def symlinks(self) -> List[Path]:
+        ext = 'so'
+        return [self.install_dir / 'lib' / f'libxml2.{ext}']
+
+
+class LldbServerBuilder(base_builders.LLVMRuntimeBuilder):
+    name: str = 'lldb-server'
+    src_dir: Path = paths.LLVM_PATH / 'llvm'
+    config_list: List[configs.Config] = configs.android_configs(platform=False, static=True)
+    ninja_targets: List[str] = ['lldb-server']
+
+    @property
+    def cflags(self) -> List[str]:
+        cflags: List[str] = super().cflags
+        # The build system will add '-stdlib=libc++' automatically. Since we
+        # have -nostdinc++ here, -stdlib is useless. Adds a flag to avoid the
+        # warnings.
+        cflags.append('-Wno-unused-command-line-argument')
+        return cflags
+
+    @property
+    def ldflags(self) -> List[str]:
+        # Currently, -rtlib=compiler-rt (even with -unwindlib=libunwind) does
+        # not automatically link libunwind.a on Android.
+        return super().ldflags + ['-lunwind']
+
+    @property
+    def _llvm_target(self) -> str:
+        return {
+            hosts.Arch.ARM: 'ARM',
+            hosts.Arch.AARCH64: 'AArch64',
+            hosts.Arch.I386: 'X86',
+            hosts.Arch.X86_64: 'X86',
+        }[self._config.target_arch]
+
+    @property
+    def cmake_defines(self) -> Dict[str, str]:
+        defines = super().cmake_defines
+        # lldb depends on support libraries.
+        defines['LLVM_ENABLE_PROJECTS'] = 'clang;lldb'
+        defines['LLVM_TARGETS_TO_BUILD'] = self._llvm_target
+        defines['LLVM_TABLEGEN'] = str(self.toolchain.build_path / 'bin' / 'llvm-tblgen')
+        defines['CLANG_TABLEGEN'] = str(self.toolchain.build_path / 'bin' / 'clang-tblgen')
+        defines['LLDB_TABLEGEN'] = str(self.toolchain.build_path / 'bin' / 'lldb-tblgen')
+        triple = self._config.target_arch.llvm_triple
+        defines['LLVM_HOST_TRIPLE'] = triple.replace('i686', 'i386')
+        return defines
+
+    def install_config(self) -> None:
+        src_path = self.output_dir / 'bin' / 'lldb-server'
+        install_dir = self.install_dir
+        install_dir.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(src_path, install_dir)
+
 
 class SysrootsBuilder(base_builders.Builder):
     name: str = 'sysroots'
