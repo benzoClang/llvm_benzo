@@ -363,6 +363,12 @@ def parse_args():
         help='Disable LTO to speed up build (only affects stage2)')
 
     parser.add_argument(
+        '--no-pgo',
+        action='store_true',
+        default=False,
+        help='Disable PGO (only affects stage2)')
+
+    parser.add_argument(
         '--debug',
         action='store_true',
         default=False,
@@ -479,8 +485,11 @@ def main():
     set_default_toolchain(stage1.installed_toolchain)
 
     if need_host:
-        profdata_filename = paths.pgo_profdata_filename()
-        profdata = paths.pgo_profdata_file(profdata_filename)
+        if not args.no_pgo:
+            profdata_filename = paths.pgo_profdata_filename()
+            profdata = paths.pgo_profdata_file(profdata_filename)
+        else:
+            profdata = None
 
         stage2 = builders.Stage2Builder()
         stage2.build_name = args.build_name
