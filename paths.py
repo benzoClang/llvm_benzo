@@ -51,15 +51,22 @@ NDK_SUPPORT_HEADERS: Path = NDK_BASE / 'sources' / 'android' / 'support' / 'incl
 
 GCC_ROOT: Path = PREBUILTS_DIR / 'gcc' / hosts.build_host().os_tag
 
+
 def pgo_profdata_filename() -> str:
     svn_revision = benzo_version.svn_revision
     base_revision = svn_revision.rstrip(string.ascii_lowercase)
     return f'{base_revision}.profdata'
 
-def pgo_profdata_file(profdata_file) -> Optional[Path]:
+
+def pgo_profdata_tarname() -> str:
+    return pgo_profdata_filename() + '.tar.bz2'
+
+
+def pgo_profdata_tar() -> Optional[Path]:
     profile = (PREBUILTS_DIR / 'clang' / 'host' / 'linux-x86' / 'profiles' /
-               profdata_file)
+               pgo_profdata_tarname())
     return profile if profile.exists() else None
+
 
 def get_package_install_path(host: hosts.Host, package_name) -> Path:
     return OUT_DIR / 'install' / host.os_tag / package_name
