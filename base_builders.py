@@ -34,7 +34,6 @@ import paths
 import toolchains
 import utils
 
-
 def logger():
     """Returns the module level logger."""
     return logging.getLogger(__name__)
@@ -44,7 +43,7 @@ class Builder:  # pylint: disable=too-few-public-methods
     name: str = ""
     config_list: List[configs.Config]
 
-    """Use prebuilt toolchain if not specified otherwise in constructor."""
+    """Use prebuilt toolchain by default. This value will be updated if a new toolchain is built."""
     toolchain: toolchains.Toolchain = toolchains.get_prebuilt_toolchain()
 
     """The toolchain to install artifacts from this LLVMRuntimeBuilder."""
@@ -149,8 +148,6 @@ class CMakeBuilder(Builder):
             'CMAKE_CXX_COMPILER': str(self._cxx),
             'CMAKE_CXX_STANDARD':  cxx_std_str,
 
-            'CMAKE_C_COMPILER': str(self.toolchain.cc),
-            'CMAKE_CXX_COMPILER': str(self.toolchain.cxx),
             'CMAKE_ADDR2LINE': str(self.toolchain.addr2line),
             'CMAKE_AR': str(self.toolchain.ar),
             'CMAKE_LIPO': str(self.toolchain.lipo),
@@ -213,16 +210,6 @@ class CMakeBuilder(Builder):
             if 'CMakeFiles' in dirs:
                 shutil.rmtree(os.path.join(dirpath, 'CMakeFiles'))
 
-    def _record_cmake_command(self, cmake_cmd: List[str],
-                              env: Dict[str, str]) -> None:
-        script_path = self.output_dir / 'cmake_invocation.sh'
-        with script_path.open('w') as outf:
-            for k, v in env.items():
-                if v != utils.ORIG_ENV.get(k):
-                    outf.write(f'{k}={v}\n')
-            outf.write(utils.list2cmdline(cmake_cmd) + '\n')
-        script_path.chmod(0o755)
-
     def _build_config(self) -> None:
         if self.remove_cmake_cache:
             self._rm_cmake_cache(self.output_dir)
@@ -238,7 +225,7 @@ class CMakeBuilder(Builder):
         self.output_dir.mkdir(parents=True, exist_ok=True)
 
         env = self.env
-        self._record_cmake_command(cmake_cmd, env)
+        utils.create_script(self.output_dir / 'cmake_invocation.sh', cmake_cmd, env)
         utils.check_call(cmake_cmd, cwd=self.output_dir, env=env)
 
         ninja_cmd: List[str] = [str(paths.NINJA_BIN_PATH)]
@@ -377,6 +364,9 @@ class LLVMBuilder(LLVMBaseBuilder):
         defines['LLVM_ENABLE_BINDINGS'] = 'OFF'
 
         return defines
+
+    def install_config(self) -> None:
+        super().install_config()
 
     @functools.cached_property
     def installed_toolchain(self) -> toolchains.Toolchain:
