@@ -197,7 +197,6 @@ class Stage2Builder(base_builders.LLVMBuilder):
 
         # Disable a bunch of unused tools
         defines['LLVM_INCLUDE_TESTS'] = 'OFF'
-        defines['LLVM_TOOL_LLVM_LIPO_BUILD'] = 'OFF'
         defines['LLVM_TOOL_LLVM_JITLINK_BUILD'] = 'OFF'
         defines['LLVM_TOOL_LLVM_AS_FUZZER_BUILD'] = 'OFF'
         defines['LLVM_TOOL_LLVM_BCANALYZER_BUILD'] = 'OFF'
@@ -218,7 +217,6 @@ class Stage2Builder(base_builders.LLVMBuilder):
         defines['LLVM_TOOL_LLVM_ISEL_FUZZER_BUILD'] = 'OFF'
         defines['LLVM_TOOL_LLVM_ITANIUM_DEMANGLE_FUZZER_BUILD'] = 'OFF'
         defines['LLVM_TOOL_LLVM_JITLINK_BUILD'] = 'OFF'
-        defines['LLVM_TOOL_LLVM_LIPO_BUILD'] = 'OFF'
         defines['LLVM_TOOL_LLVM_LTO2_BUILD'] = 'OFF'
         defines['LLVM_TOOL_LLVM_LTO_BUILD'] = 'OFF'
         defines['LLVM_TOOL_LLVM_MCA_BUILD'] = 'OFF'
