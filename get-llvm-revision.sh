@@ -15,7 +15,7 @@ error_message() {
 
 if [ "$1" == "" ]; then
   script_path="$(dirname "$(readlink -f "$0")")"
-  python3 $script_path/../../external/toolchain-utils/llvm_tools/git_llvm_rev.py --llvm_dir $script_path/../llvm-project --sha upstream/master
+  python3 $script_path/../../external/toolchain-utils/llvm_tools/git_llvm_rev.py --llvm_dir $script_path/../llvm-project --sha upstream/main
   if [ $? -ne 0 ]; then
     error_message
   fi
