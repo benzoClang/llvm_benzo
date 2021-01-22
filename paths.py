@@ -52,6 +52,8 @@ NDK_SUPPORT_HEADERS: Path = NDK_BASE / 'sources' / 'android' / 'support' / 'incl
 
 GCC_ROOT: Path = PREBUILTS_DIR / 'gcc' / hosts.build_host().os_tag
 
+_PYTHON_VER = '3.10'
+_PYTHON_VER_SHORT = _PYTHON_VER.replace('.', '')
 
 def pgo_profdata_filename() -> str:
     svn_revision = benzo_version.get_svn_revision_number()
@@ -79,26 +81,26 @@ def get_python_executable(host: hosts.Host) -> Path:
     """Returns the path to python executable for a host."""
     python_root = get_python_dir(host)
     return {
-        hosts.Host.Linux: python_root / 'bin' / 'python3.8',
+        hosts.Host.Linux: python_root / 'bin' / f'python{_PYTHON_VER}',
     }[host]
 
 def get_python_include_dir(host: hosts.Host) -> Path:
     """Returns the path to python include dir for a host."""
     python_root = get_python_dir(host)
     return {
-        hosts.Host.Linux: python_root / 'include' / 'python3.8',
+        hosts.Host.Linux: python_root / 'include' / f'python{_PYTHON_VER}',
     }[host]
 
 def get_python_lib(host: hosts.Host) -> Path:
     """Returns the path to python lib for a host."""
     python_root = get_python_dir(host)
     return {
-        hosts.Host.Linux: python_root / 'lib' / 'libpython3.8.so',
+        hosts.Host.Linux: python_root / 'lib' / f'libpython{_PYTHON_VER}.so',
     }[host]
 
 def get_python_dynamic_lib(host: hosts.Host) -> Path:
     """Returns the path to python runtime dynamic lib for a host."""
     python_root = get_python_dir(host)
     return {
-        hosts.Host.Linux: python_root / 'lib' / 'libpython3.8.so.1.0',
+        hosts.Host.Linux: python_root / 'lib' / f'libpython{_PYTHON_VER}.so.1.0',
     }[host]
