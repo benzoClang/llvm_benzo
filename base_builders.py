@@ -289,6 +289,15 @@ class LLVMBaseBuilder(CMakeBuilder):  # pylint: disable=abstract-method
 
         defines['LLVM_ENABLE_LLD'] = 'ON'
 
+        # Use Python for any host build (not Android targets, however)
+        target = self._config.target_os
+        if target != hosts.Host.Android:
+            defines['Python3_LIBRARY'] = str(paths.get_python_lib(target))
+            defines['Python3_LIBRARIES'] = str(paths.get_python_lib(target))
+            defines['Python3_INCLUDE_DIR'] = str(paths.get_python_include_dir(target))
+            defines['Python3_INCLUDE_DIRS'] = str(paths.get_python_include_dir(target))
+            defines['Python3_EXECUTABLE'] = str(paths.get_python_executable(hosts.build_host()))
+
         return defines
 
 
