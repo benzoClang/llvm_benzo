@@ -696,7 +696,7 @@ class PlatformLibcxxAbiBuilder(base_builders.LLVMRuntimeBuilder):
     @property
     def cmake_defines(self) -> Dict[str, str]:
         defines: Dict[str, str] = super().cmake_defines
-        defines['LIBCXXABI_LIBCXX_INCLUDES'] = str(paths.LLVM_PATH / 'libcxx' / 'include')
+        defines['LIBCXXABI_LIBCXX_INCLUDES'] = str(paths.STAGE2_LIBCXXABI_LIBCXX_INCLUDES)
         defines['LIBCXXABI_ENABLE_SHARED'] = 'OFF'
         return defines
 
