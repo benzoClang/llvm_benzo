@@ -15,5 +15,20 @@
 # limitations under the License.
 #
 
-patch_level = '0'
-svn_revision = 'r415010'
+import paths
+import utils
+
+_patch_level = '0'
+_svn_revision = ''
+
+def get_svn_revision():
+    if _svn_revision != '':
+        return _svn_revision
+    rev_script = str(paths.SCRIPTS_DIR / 'get-llvm-revision.sh')
+    revision = utils.check_output(['sh', rev_script]).strip()
+    return revision
+
+def get_patch_level():
+    if _patch_level != '':
+        return _patch_level
+    return 0

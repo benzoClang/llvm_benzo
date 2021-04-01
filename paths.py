@@ -54,7 +54,7 @@ GCC_ROOT: Path = PREBUILTS_DIR / 'gcc' / hosts.build_host().os_tag
 
 
 def pgo_profdata_filename() -> str:
-    svn_revision = benzo_version.svn_revision
+    svn_revision = benzo_version.get_svn_revision()
     base_revision = svn_revision.rstrip(string.ascii_lowercase)
     return f'{base_revision}.profdata'
 

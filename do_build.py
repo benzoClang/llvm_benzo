@@ -335,7 +335,7 @@ def package_toolchain(toolchain_builder: LLVMBuilder,
     # Add an AndroidVersion.txt file.
     version_file_path = install_dir / 'VERSION'
     with version_file_path.open('w') as version_file:
-        svn_revision = benzo_version.svn_revision
+        svn_revision = benzo_version.get_svn_revision()
         version_file.write(f'{version.long_version()}-{svn_revision}-benzoClang\n')
 
     # Package up the resulting trimmed install/ directory.
@@ -503,6 +503,7 @@ def main():
 
     stage1 = builders.Stage1Builder()
     stage1.build_name = 'stage1'
+    stage1.svn_revision = benzo_version.get_svn_revision()
     stage1.clang_vendor = 'benzoClang'
     stage1.ccache = args.ccache
     stage1.ccache_dir = args.ccache_dir
@@ -519,6 +520,7 @@ def main():
 
         stage2 = builders.Stage2Builder()
         stage2.build_name = args.build_name
+        stage2.svn_revision = benzo_version.get_svn_revision()
         stage2.clang_vendor = 'benzoClang'
         stage2.ccache = args.ccache
         stage2.ccache_dir = args.ccache_dir

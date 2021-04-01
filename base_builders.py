@@ -278,11 +278,11 @@ class LLVMBaseBuilder(CMakeBuilder):  # pylint: disable=abstract-method
         defines['LLVM_ENABLE_THREADS'] = 'ON'
         defines['LLVM_USE_NEWPM'] = 'ON'
         defines['LLVM_LIBDIR_SUFFIX'] = '64'
-        defines['LLVM_VERSION_PATCH'] = benzo_version.patch_level
-        defines['CLANG_VERSION_PATCHLEVEL'] = benzo_version.patch_level
+        defines['LLVM_VERSION_PATCH'] = benzo_version.get_patch_level()
+        defines['CLANG_VERSION_PATCHLEVEL'] = benzo_version.get_patch_level()
         defines['CLANG_REPOSITORY_STRING'] = 'https://github.com/benzoClang/llvm-project'
         defines['CLANG_TC_DATE'] = datetime.datetime.now().strftime("%Y%m%d")
-        defines['TOOLCHAIN_REVISION_STRING'] = benzo_version.svn_revision
+        defines['TOOLCHAIN_REVISION_STRING'] = benzo_version.get_svn_revision()
 
         # http://b/111885871 - Disable building xray because of MacOS issues.
         defines['COMPILER_RT_BUILD_XRAY'] = 'OFF'
@@ -333,6 +333,7 @@ class LLVMBuilder(LLVMBaseBuilder):
     src_dir: Path = paths.LLVM_PATH / 'llvm'
     config_list: List[configs.Config]
     build_tags: Optional[List[str]] = None
+    svn_revision: str
     clang_vendor: str
     enable_assertions: bool = False
     toolchain_name: str
