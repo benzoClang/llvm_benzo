@@ -205,26 +205,21 @@ class Stage2Builder(base_builders.LLVMBuilder):
 
         # Disable a bunch of unused tools
         defines['LLVM_INCLUDE_TESTS'] = 'OFF'
-        defines['LLVM_TOOL_LLVM_JITLINK_BUILD'] = 'OFF'
+        defines['LLVM_INCLUDE_GO_TESTS'] = 'OFF'
+        defines['LLVM_INCLUDE_EXAMPLES'] = 'OFF'
+        defines['LLVM_INCLUDE_BENCHMARKS'] = 'OFF'
         defines['LLVM_TOOL_LLVM_AS_FUZZER_BUILD'] = 'OFF'
         defines['LLVM_TOOL_LLVM_BCANALYZER_BUILD'] = 'OFF'
         defines['LLVM_TOOL_LLVM_CAT_BUILD'] = 'OFF'
         defines['LLVM_TOOL_LLVM_CVTRES_BUILD'] = 'OFF'
-        defines['LLVM_TOOL_LLVM_CXXDUMP_BUILD'] = 'OFF'
-        defines['LLVM_TOOL_LLVM_CXXFILT_BUILD'] = 'OFF'
-        defines['LLVM_TOOL_LLVM_CXXMAP_BUILD'] = 'OFF'
         defines['LLVM_TOOL_LLVM_C_TEST_BUILD'] = 'OFF'
-        defines['LLVM_TOOL_LLVM_DIFF_BUILD'] = 'OFF'
         defines['LLVM_TOOL_LLVM_DWP_BUILD'] = 'OFF'
         defines['LLVM_TOOL_LLVM_ELFABI_BUILD'] = 'OFF'
         defines['LLVM_TOOL_LLVM_EXEGESIS_BUILD'] = 'OFF'
-        defines['LLVM_TOOL_LLVM_EXTRACT_BUILD'] = 'OFF'
-        defines['LLVM_TOOL_LLVM_GO_BUILD'] = 'OFF'
         defines['LLVM_TOOL_LLVM_GSYMUTIL_BUILD'] = 'OFF'
         defines['LLVM_TOOL_LLVM_IFS_BUILD'] = 'OFF'
         defines['LLVM_TOOL_LLVM_ISEL_FUZZER_BUILD'] = 'OFF'
         defines['LLVM_TOOL_LLVM_ITANIUM_DEMANGLE_FUZZER_BUILD'] = 'OFF'
-        defines['LLVM_TOOL_LLVM_JITLINK_BUILD'] = 'OFF'
         defines['LLVM_TOOL_LLVM_LTO2_BUILD'] = 'OFF'
         defines['LLVM_TOOL_LLVM_LTO_BUILD'] = 'OFF'
         defines['LLVM_TOOL_LLVM_MCA_BUILD'] = 'OFF'
@@ -241,6 +236,9 @@ class Stage2Builder(base_builders.LLVMBuilder):
         defines['LLVM_TOOL_LLVM_UNDNAME_BUILD'] = 'OFF'
         defines['LLVM_TOOL_LLVM_XRAY_BUILD'] = 'OFF'
         return defines
+
+    def install_config(self) -> None:
+        super().install_config()
 
 
 class CompilerRTBuilder(base_builders.LLVMRuntimeBuilder):
@@ -287,10 +285,6 @@ class CompilerRTBuilder(base_builders.LLVMRuntimeBuilder):
     def cflags(self) -> List[str]:
         cflags = super().cflags
         cflags.append('-funwind-tables')
-        cflags.append('-Wno-incompatible-pointer-types')
-        cflags.append('-Wno-unused-command-line-argument')
-        cflags.append('-Wno-unused-variable')
-        cflags.append('-Wno-visibility')
         return cflags
 
     def install_config(self) -> None:
@@ -359,10 +353,6 @@ class CompilerRTHostI386Builder(base_builders.LLVMRuntimeBuilder):
         cflags.append('-D__STDC_FORMAT_MACROS')
         cflags.append('--target=i386-linux-gnu')
         cflags.append('-march=i686')
-        cflags.append('-Wno-incompatible-pointer-types')
-        cflags.append('-Wno-unused-command-line-argument')
-        cflags.append('-Wno-unused-variable')
-        cflags.append('-Wno-visibility')
         return cflags
 
     def _build_config(self) -> None:
@@ -404,13 +394,6 @@ class LibOMPBuilder(base_builders.LLVMRuntimeBuilder):
         # to be ON by default.
         defines['CMAKE_POLICY_DEFAULT_CMP0056'] = 'NEW'
         return defines
-
-    @property
-    def cflags(self) -> List[str]:
-        cflags = super().cflags
-        cflags.append('-Wno-unused-command-line-argument')
-        cflags.append('-Wno-unused-variable')
-        return cflags
 
     def install_config(self) -> None:
         # We need to install libomp manually.
