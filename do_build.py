@@ -365,6 +365,13 @@ def parse_args():
         '--build-name', default='benzo', help='Release name for the package.')
 
     parser.add_argument(
+        '--jobs',
+        '-j',
+        type=int,
+        action='store',
+        help='Number of threads to use. Default: nproc will give number of available processing units.')
+
+    parser.add_argument(
         '--enable-assertions',
         action='store_true',
         default=False,
@@ -495,6 +502,7 @@ def main():
     stage1.ccache = args.ccache
     stage1.ccache_dir = args.ccache_dir
     stage1.build_android_targets = args.debug or instrumented
+    stage1.num_jobs = args.jobs
     stage1.build()
     set_default_toolchain(stage1.installed_toolchain)
 
@@ -513,6 +521,7 @@ def main():
         stage2.enable_assertions = args.enable_assertions
         stage2.lto = not args.no_lto
         stage2.build_instrumented = instrumented
+        stage2.num_jobs = args.jobs
         stage2.profdata_file = profdata if profdata else None
 
         stage2_tags = []

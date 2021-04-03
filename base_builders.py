@@ -246,6 +246,7 @@ class LLVMBaseBuilder(CMakeBuilder):  # pylint: disable=abstract-method
     enable_assertions: bool = False
     ccache: bool = False
     ccache_dir: str = None
+    num_jobs: int = None
 
     @property
     def cmake_defines(self) -> Dict[str, str]:
@@ -265,11 +266,16 @@ class LLVMBaseBuilder(CMakeBuilder):  # pylint: disable=abstract-method
         else:
             defines['LLVM_ENABLE_ASSERTIONS'] = 'OFF'
 
+        if self.num_jobs is None:
+            defines['LLVM_PARALLEL_COMPILE_JOBS'] = subprocess.getoutput("nproc")
+            defines['LLVM_PARALLEL_LINK_JOBS'] = subprocess.getoutput("nproc")
+        else:
+            defines['LLVM_PARALLEL_COMPILE_JOBS'] = self.num_jobs
+            defines['LLVM_PARALLEL_LINK_JOBS'] = self.num_jobs
+
         # https://github.com/android-ndk/ndk/issues/574 - Don't depend on libtinfo.
         defines['LLVM_ENABLE_TERMINFO'] = 'OFF'
         defines['LLVM_ENABLE_THREADS'] = 'ON'
-        defines['LLVM_PARALLEL_COMPILE_JOBS'] = subprocess.getoutput("nproc")
-        defines['LLVM_PARALLEL_LINK_JOBS'] = subprocess.getoutput("nproc")
         defines['LLVM_USE_NEWPM'] = 'ON'
         defines['LLVM_LIBDIR_SUFFIX'] = '64'
         defines['LLVM_VERSION_PATCH'] = benzo_version.patch_level
