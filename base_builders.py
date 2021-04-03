@@ -372,6 +372,9 @@ class LLVMBuilder(LLVMBaseBuilder):
                                               'binutils' / 'include')
         defines['LLVM_BUILD_RUNTIME'] = 'ON'
 
+        # Don't build OCaml bindings
+        defines['LLVM_ENABLE_BINDINGS'] = 'OFF'
+
         return defines
 
     @functools.cached_property
