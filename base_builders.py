@@ -253,8 +253,10 @@ class AutoconfBuilder(Builder):
             argfile.write(' '.join(cxxflags + ldflags))
 
         env = self.env
-        env['CC'] = f'{self._cc} @{cflags_file}'
-        env['CXX'] = f'{self._cxx} @{cxxflags_file}'
+        env['CC'] = f'{self._cc}'
+        env['CXX'] = f'{self._cxx}'
+        env['CFLAGS']  = f'@{cflags_file}'
+        env['CXXFLAGS']  = f'@{cxxflags_file}'
 
         config_cmd = [str(self.src_dir / 'configure'), f'--prefix={self.install_dir}']
         config_cmd.extend(self.config_flags)
