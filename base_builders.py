@@ -295,6 +295,13 @@ class LLVMBaseBuilder(CMakeBuilder):  # pylint: disable=abstract-method
 
         defines['LLVM_ENABLE_LLD'] = 'ON'
 
+        # Disable a bunch of examples & tests
+        defines['LLVM_INCLUDE_BENCHMARKS'] = 'OFF'
+        defines['LLVM_INCLUDE_EXAMPLES'] = 'OFF'
+        defines['LLVM_INCLUDE_TESTS'] = 'OFF'
+        defines['LLVM_INCLUDE_GO_TESTS'] = 'OFF'
+        defines['LLVM_INCLUDE_BENCHMARKS'] = 'OFF'
+
         # Use Python for any host build (not Android targets, however)
         target = self._config.target_os
         if target != hosts.Host.Android:
