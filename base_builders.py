@@ -339,6 +339,8 @@ class CMakeBuilder(Builder):
             'CMAKE_FIND_ROOT_PATH_MODE_PROGRAM': 'NEVER',
 
             'CMAKE_POSITION_INDEPENDENT_CODE': 'ON',
+
+            'GO_EXECUTABLE': str(paths.GO_BIN_PATH / 'go'),
         }
         linker = self._config.get_linker(self.toolchain)
         if linker:
