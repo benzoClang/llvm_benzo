@@ -611,6 +611,7 @@ class SwigBuilder(base_builders.AutoconfBuilder):
     def config_flags(self) -> List[str]:
         flags = super().config_flags
         flags.append('--without-pcre')
+        flags.append('--with-boost=yes')
         return flags
 
     @property
