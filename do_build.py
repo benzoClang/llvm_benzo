@@ -351,6 +351,20 @@ def package_toolchain(toolchain_builder: LLVMBuilder,
         svn_revision = benzo_version.get_svn_revision()
         version_file.write(f'{version.long_version()}-{svn_revision}-benzoClang\n')
 
+    # Add BUILD.bazel file.
+    with (install_dir / 'BUILD.bazel').open('w') as bazel_file:
+        bazel_file.write(
+            textwrap.dedent("""\
+                package(default_visibility = ["//visibility:public"])
+
+                filegroup(
+                    name = "binaries",
+                    srcs = glob([
+                        "bin/*",
+                        "lib64/*",
+                    ]),
+                )"""))
+
     # Package up the resulting trimmed install/ directory.
     if create_tar:
         tarball_name = package_name + '-' + host.os_tag + '.tar.bz2'
