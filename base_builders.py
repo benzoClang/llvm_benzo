@@ -630,3 +630,6 @@ class LLVMBuilder(LLVMBaseBuilder):
     def installed_toolchain(self) -> toolchains.Toolchain:
         """Gets the built Toolchain."""
         return toolchains.Toolchain(self.install_dir, self.output_dir)
+
+    def test(self) -> None:
+        self._ninja(["check-clang", "check-llvm", "check-clang-tools"])
