@@ -409,10 +409,17 @@ def parse_args():
         default=False,
         help='Enable assertions (only affects stage2)')
 
-    parser.add_argument(
-        '--no-lto',
+    lto_group = parser.add_mutually_exclusive_group()
+    lto_group.add_argument(
+        '--lto',
         action='store_true',
         default=False,
+        help='Enable LTO (only affects stage2).  This option increases build time.')
+    lto_group.add_argument(
+        '--no-lto',
+        action='store_false',
+        default=False,
+        dest='lto',
         help='Disable LTO to speed up build (only affects stage2)')
 
     parser.add_argument(
@@ -512,7 +519,6 @@ def main():
     do_package = not args.skip_package
     do_strip = not args.no_strip
     do_strip_host_package = do_strip and not args.debug
-    do_thinlto = not args.no_lto
     do_ccache = args.ccache
     build_lldb = 'lldb' not in args.no_build
 
@@ -522,9 +528,9 @@ def main():
     if not hosts.build_host().is_linux:
         raise RuntimeError('Only building on Linux is supported')
 
-    logger().info('do_build=%r do_stage1=%r do_stage2=%r do_runtimes=%r do_package=%r do_thinlto=%r do_ccache=%r' %
+    logger().info('do_build=%r do_stage1=%r do_stage2=%r do_runtimes=%r do_package=%r lto=%r do_ccache=%r' %
                   (not args.skip_build, BuilderRegistry.should_build('stage1'), BuilderRegistry.should_build('stage2'),
-                  do_runtimes, do_package, do_thinlto, do_ccache))
+                  do_runtimes, do_package, args.lto, do_ccache))
 
     # Build the stage1 Clang for the build host
     instrumented = args.build_instrumented
@@ -563,7 +569,7 @@ def main():
         stage2.ccache_dir = args.ccache_dir
         stage2.debug_build = args.debug
         stage2.enable_assertions = args.enable_assertions
-        stage2.lto = not args.no_lto
+        stage2.lto = args.lto
         stage2.build_instrumented = instrumented
         stage2.num_jobs = args.jobs
         stage2.profdata_file = profdata if profdata else None
