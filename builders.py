@@ -59,6 +59,7 @@ class Stage1Builder(base_builders.LLVMBuilder):
     name: str = 'stage1'
     install_dir: Path = paths.OUT_DIR / 'stage1-install'
     build_android_targets: bool = False
+    build_extra_tools: bool = False
 
     @property
     def llvm_targets(self) -> Set[str]:
@@ -70,6 +71,8 @@ class Stage1Builder(base_builders.LLVMBuilder):
     @property
     def llvm_projects(self) -> Set[str]:
         proj = {'clang', 'lld', 'libcxxabi', 'libcxx', 'compiler-rt'}
+        if self.build_extra_tools:
+            proj.add('clang-tools-extra')
         if self.build_lldb:
             proj.add('lldb')
         return proj
@@ -88,7 +91,8 @@ class Stage1Builder(base_builders.LLVMBuilder):
     def cmake_defines(self) -> Dict[str, str]:
         defines = super().cmake_defines
         defines['CLANG_ENABLE_ARCMT'] = 'OFF'
-        defines['CLANG_ENABLE_STATIC_ANALYZER'] = 'OFF'
+        if not self.build_extra_tools:
+            defines['CLANG_ENABLE_STATIC_ANALYZER'] = 'OFF'
 
         defines['LLVM_BUILD_TOOLS'] = 'ON'
 

@@ -446,12 +446,9 @@ class LLVMBaseBuilder(CMakeBuilder):  # pylint: disable=abstract-method
 
         defines['LLVM_ENABLE_LLD'] = 'ON'
 
-        # Disable a bunch of examples & tests
+        # Disable benchmarks and examples
         defines['LLVM_INCLUDE_BENCHMARKS'] = 'OFF'
         defines['LLVM_INCLUDE_EXAMPLES'] = 'OFF'
-        defines['LLVM_INCLUDE_TESTS'] = 'OFF'
-        defines['LLVM_INCLUDE_GO_TESTS'] = 'OFF'
-        defines['LLVM_INCLUDE_BENCHMARKS'] = 'OFF'
 
         # Disable per-target runtimes directory
         defines['LLVM_ENABLE_PER_TARGET_RUNTIME_DIR'] = 'OFF'
@@ -607,6 +604,8 @@ class LLVMBuilder(LLVMBaseBuilder):
 
         defines['LLVM_BUILD_RUNTIME'] = 'ON'
 
+        defines['LLVM_INCLUDE_GO_TESTS'] = 'OFF'
+
         # Don't build OCaml bindings
         defines['LLVM_ENABLE_BINDINGS'] = 'OFF'
 
@@ -633,3 +632,10 @@ class LLVMBuilder(LLVMBaseBuilder):
 
     def test(self) -> None:
         self._ninja(["check-clang", "check-llvm", "check-clang-tools"])
+        # Known failed tests:
+        #   Clang :: CodeGenCXX/builtins.cpp
+        #   Clang :: CodeGenCXX/unknown-anytype.cpp
+        #   Clang :: Sema/builtin-setjmp.c
+        #   LLVM :: Bindings/Go/go.test (disabled by LLVM_INCLUDE_GO_TESTS=OFF)
+        #   LLVM :: CodeGen/X86/extractelement-fp.ll
+        #   LLVM :: CodeGen/X86/fp-round.ll
