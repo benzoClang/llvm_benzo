@@ -607,8 +607,6 @@ class LLVMBuilder(LLVMBaseBuilder):
 
         defines['CLANG_VENDOR'] = self.clang_vendor
         defines['LLD_VENDOR'] = self.clang_vendor
-        defines['LLVM_BINUTILS_INCDIR'] = str(paths.ANDROID_DIR / 'toolchain' /
-                                              'binutils' / 'include')
         defines['LLVM_BUILD_RUNTIME'] = 'ON'
 
         # Don't build OCaml bindings
