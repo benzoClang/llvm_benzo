@@ -107,6 +107,10 @@ class Stage1Builder(base_builders.LLVMBuilder):
 
         return defines
 
+    def test(self) -> None:
+        self._ninja(["check-clang", "check-llvm", "check-clang-tools"])
+        # stage1 cannot run check-cxx yet
+
 
 class Stage2Builder(base_builders.LLVMBuilder):
     name: str = 'stage2'
@@ -204,6 +208,8 @@ class Stage2Builder(base_builders.LLVMBuilder):
         # necessary to pass -lc++abi explicitly.
         defines['LIBCXX_ENABLE_STATIC_ABI_LIBRARY'] = 'ON'
         defines['LIBCXX_ENABLE_ABI_LINKER_SCRIPT'] = 'OFF'
+        defines['LIBCXX_TEST_COMPILER_FLAGS'] = defines['CMAKE_CXX_FLAGS']
+        defines['LIBCXX_TEST_LINKER_FLAGS'] = defines['CMAKE_EXE_LINKER_FLAGS']
         return defines
 
     def install_config(self) -> None:
