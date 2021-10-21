@@ -37,7 +37,7 @@ class Config:
 
     @property
     def llvm_triple(self) -> str:
-        return f'{self.target_arch.llvm_triple}'
+        raise NotImplementedError()
 
     def get_c_compiler(self, toolchain: toolchains.Toolchain) -> Path:
         """Returns path to c compiler."""
@@ -190,10 +190,37 @@ class AndroidConfig(_BaseConfig):
     suppress_libcxx_headers: bool = False
 
     @property
+    def base_llvm_triple(self) -> str:
+        """Get base LLVM triple (without API level)."""
+        return f'{self.target_arch.llvm_arch}-linux-android'
+
+    @property
+    def llvm_triple(self) -> str:
+        """Get LLVM triple (with API level)."""
+        return f'{self.base_llvm_triple}{self.api_level}'
+
+    @property
+    def ndk_arch(self) -> str:
+        """Converts to ndk arch."""
+        return {
+            hosts.Arch.ARM: 'arm',
+            hosts.Arch.AARCH64: 'arm64',
+            hosts.Arch.I386: 'x86',
+            hosts.Arch.X86_64: 'x86_64',
+        }[self.target_arch]
+
+    @property
+    def ndk_sysroot_triple(self) -> str:
+        """Triple used to identify NDK sysroot."""
+        if self.target_arch == hosts.Arch.ARM:
+            return 'arm-linux-androideabi'
+        return self.base_llvm_triple
+
+    @property
     def sysroot(self) -> Path:  # type: ignore
         """Returns sysroot path."""
         platform_or_ndk = 'platform' if self.platform else 'ndk'
-        return paths.SYSROOTS / platform_or_ndk / self.target_arch.ndk_arch
+        return paths.SYSROOTS / platform_or_ndk / self.ndk_arch
 
     @property
     def ldflags(self) -> List[str]:
@@ -206,10 +233,6 @@ class AndroidConfig(_BaseConfig):
         if self.static:
             ldflags.append('-static')
         return ldflags
-
-    @property
-    def llvm_triple(self) -> str:
-        return f'{self.target_arch.llvm_triple}{self.api_level}'
 
     @property
     def cflags(self) -> List[str]:
