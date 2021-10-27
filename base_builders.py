@@ -114,8 +114,8 @@ class Builder:  # pylint: disable=too-few-public-methods
     output_toolchain: toolchains.Toolchain
 
     def __init__(self,
-                 config_list: Optional[Sequence[configs.Config]]=None,
-                 toolchain: Optional[toolchains.Toolchain]=None) -> None:
+                 config_list: Optional[Sequence[configs.Config]] = None,
+                 toolchain: Optional[toolchains.Toolchain] = None) -> None:
         if toolchain:
             self.toolchain = toolchain
         if config_list:
@@ -253,10 +253,10 @@ class AutoconfBuilder(Builder):
             argfile.write(' '.join(cxxflags + ldflags))
 
         env = self.env
-        env['CC'] = f'{self._cc}'
-        env['CXX'] = f'{self._cxx}'
-        env['CFLAGS']  = f'@{cflags_file}'
-        env['CXXFLAGS']  = f'@{cxxflags_file}'
+        # Append CFLAGS after CC since autoconf pre-checks does not use CFLAGS, and we can't pass
+        # it without providing -isystem flags.
+        env['CC'] = f'{self._cc} @{cflags_file}'
+        env['CXX'] = f'{self._cxx} @{cxxflags_file}'
 
         config_cmd = [str(self.src_dir / 'configure'), f'--prefix={self.install_dir}']
         config_cmd.extend(self.config_flags)
@@ -304,11 +304,9 @@ class CMakeBuilder(Builder):
         cflags_str = ' '.join(cflags)
         cxxflags_str = ' '.join(cxxflags)
         ldflags_str = ' '.join(ldflags)
-        cxx_std_str = '17'
         defines: Dict[str, str] = {
             'CMAKE_C_COMPILER': str(self._cc),
             'CMAKE_CXX_COMPILER': str(self._cxx),
-            'CMAKE_CXX_STANDARD':  cxx_std_str,
 
             'CMAKE_ADDR2LINE': str(self.toolchain.addr2line),
             'CMAKE_AR': str(self.toolchain.ar),
@@ -374,6 +372,10 @@ class CMakeBuilder(Builder):
             if 'CMakeFiles' in dirs:
                 shutil.rmtree(os.path.join(dirpath, 'CMakeFiles'))
 
+    def _ninja(self, args: list[str]) -> None:
+        ninja_cmd = [str(paths.NINJA_BIN_PATH)] + args
+        utils.check_call(ninja_cmd, cwd=self.output_dir, env=self.env)
+
     def _build_config(self) -> None:
         if self.remove_cmake_cache:
             self._rm_cmake_cache(self.output_dir)
@@ -392,10 +394,7 @@ class CMakeBuilder(Builder):
         utils.create_script(self.output_dir / 'cmake_invocation.sh', cmake_cmd, env)
         utils.check_call(cmake_cmd, cwd=self.output_dir, env=env)
 
-        ninja_cmd: List[str] = [str(paths.NINJA_BIN_PATH)]
-        ninja_cmd.extend(self.ninja_targets)
-        utils.check_call(ninja_cmd, cwd=self.output_dir, env=env)
-
+        self._ninja(self.ninja_targets)
         self.install_config()
 
     def install_config(self) -> None:
