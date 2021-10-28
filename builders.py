@@ -483,7 +483,7 @@ class LibUnwindBuilder(base_builders.LLVMRuntimeBuilder):
 
     def install_config(self) -> None:
         # We need to install libunwind manually.
-        src_path = self.output_dir / 'lib64' / 'libunwind.a'
+        src_path = self.output_dir / 'lib' / 'libunwind.a'
         arch = self._config.target_arch
         out_res_dir = self.output_toolchain.resource_dir / arch.value
         out_res_dir.mkdir(parents=True, exist_ok=True)
@@ -854,7 +854,7 @@ class PlatformLibcxxAbiBuilder(base_builders.LLVMRuntimeBuilder):
         install_dir = self._config.sysroot / 'usr' / lib_name
 
         if self._is_64bit():
-            src_path = self.output_dir / 'lib64' / 'libc++abi.a'
+            src_path = self.output_dir / 'lib' / 'libc++abi.a'
             shutil.copy2(src_path, install_dir / 'libc++abi.a')
         else:
             with (install_dir / 'libc++abi.so').open('w') as f:
