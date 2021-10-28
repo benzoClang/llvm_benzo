@@ -22,7 +22,6 @@ import os
 import re
 import shutil
 import textwrap
-import timer
 
 import base_builders
 import configs
