@@ -430,7 +430,7 @@ class CompilerRTHostI386Builder(base_builders.LLVMRuntimeBuilder):
 
 class LibUnwindBuilder(base_builders.LLVMRuntimeBuilder):
     name: str = 'libunwind'
-    src_dir: Path = paths.LLVM_PATH / 'libunwind'
+    src_dir: Path = paths.LLVM_PATH / 'runtimes'
 
     # Build two copies of the builtins library:
     #  - A copy targeting the NDK with hidden symbols.
@@ -467,6 +467,7 @@ class LibUnwindBuilder(base_builders.LLVMRuntimeBuilder):
     @property
     def cmake_defines(self) -> Dict[str, str]:
         defines = super().cmake_defines
+        defines['LLVM_ENABLE_RUNTIMES'] = 'libunwind'
         defines['LIBUNWIND_HIDE_SYMBOLS'] = 'TRUE' if not self.is_exported else 'FALSE'
         defines['LIBUNWIND_ENABLE_SHARED'] = 'FALSE'
         if self.enable_assertions:
@@ -823,16 +824,21 @@ class SysrootsBuilder(base_builders.Builder):
 
 class PlatformLibcxxAbiBuilder(base_builders.LLVMRuntimeBuilder):
     name = 'platform-libcxxabi'
-    src_dir: Path = paths.LLVM_PATH / 'libcxxabi'
+    src_dir: Path = paths.LLVM_PATH / 'runtimes'
     config_list: List[configs.Config] = configs.android_configs(
         platform=True, suppress_libcxx_headers=True)
 
     @property
     def cmake_defines(self) -> Dict[str, str]:
         defines: Dict[str, str] = super().cmake_defines
-        defines['LIBCXXABI_LIBCXX_INCLUDES'] = self.toolchain.libcxx_headers
+        defines['LLVM_ENABLE_RUNTIMES'] ='libcxxabi;libcxx'
         defines['LIBCXXABI_ENABLE_SHARED'] = 'OFF'
         defines['LIBCXXABI_TARGET_TRIPLE'] = self._config.llvm_triple
+
+        defines['LIBCXX_ENABLE_SHARED'] = 'OFF'
+        defines['LIBCXX_TARGET_TRIPLE'] = self._config.llvm_triple
+        defines['LIBCXX_ENABLE_ABI_LINKER_SCRIPT'] = 'OFF'
+        defines['LIBCXX_ENABLE_STATIC_ABI_LIBRARY'] = 'ON'
         return defines
 
     def _is_64bit(self) -> bool:
