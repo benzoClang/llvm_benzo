@@ -366,6 +366,9 @@ def package_toolchain(toolchain_builder: LLVMBuilder,
         svn_revision = benzo_version.get_svn_revision()
         version_file.write(f'{version.long_version()}-{svn_revision}-benzoClang\n')
 
+    # Remove optrecord.py to avoid auto-filed bugs about call to yaml.load_all
+    os.remove(install_dir / 'share/opt-viewer/optrecord.py')
+
     # Add BUILD.bazel file.
     with (install_dir / 'BUILD.bazel').open('w') as bazel_file:
         bazel_file.write(
