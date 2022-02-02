@@ -138,6 +138,9 @@ class Builder:  # pylint: disable=too-few-public-methods
     def _is_cross_compiling(self) -> bool:
         return self._config.target_os != hosts.build_host()
 
+    def _is_64bit(self) -> bool:
+        return self._config.target_arch in (hosts.Arch.AARCH64, hosts.Arch.X86_64)
+
     @property
     def _cc(self) -> Path:
         return self._config.get_c_compiler(self.toolchain)
@@ -494,6 +497,11 @@ class LLVMRuntimeBuilder(LLVMBaseBuilder):  # pylint: disable=abstract-method
         defines: Dict[str, str] = super().cmake_defines
         defines['LLVM_CONFIG_PATH'] = str(self.toolchain.path /
                                           'bin' / 'llvm-config')
+        if self._config.target_os.is_android:
+            # ANDROID_PLATFORM_LEVEL is checked when enabling TSAN for Android.
+            # It's usually set by the NDK's CMake toolchain file, which we don't
+            # use.
+            defines['ANDROID_PLATFORM_LEVEL'] = self._config.api_level
         return defines
 
 
