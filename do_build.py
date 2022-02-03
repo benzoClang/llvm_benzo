@@ -83,6 +83,7 @@ def build_runtimes(build_lldb_server: bool):
     builders.CompilerRTBuilder().build()
     builders.TsanBuilder().build()
     builders.CompilerRTHostI386Builder().build()
+    builders.MuslHostRuntimeBuilder().build()
     builders.LibOMPBuilder().build()
     if build_lldb_server:
         builders.LldbServerBuilder().build()
