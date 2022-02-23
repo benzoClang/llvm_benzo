@@ -264,6 +264,7 @@ def package_toolchain(toolchain_builder: LLVMBuilder,
         'llvm-addr2line',
         'llvm-ar',
         'llvm-as',
+        'llvm-bolt',
         'llvm-cfi-verify',
         'llvm-config',
         'llvm-cov',
@@ -287,6 +288,7 @@ def package_toolchain(toolchain_builder: LLVMBuilder,
         'llvm-strings',
         'llvm-strip',
         'llvm-symbolizer',
+        'merge-fdata',
         'sancov',
         'sanstats',
         'scan-build',
@@ -303,9 +305,12 @@ def package_toolchain(toolchain_builder: LLVMBuilder,
     # scripts that should not be stripped
     script_bins = {
         'git-clang-format',
+        'lldb.sh',
+        # merge-fdata is built with relocation, strip -S would fail. Treat it as
+        # a script and do not strip as a workaround.
+        'merge-fdata',
         'scan-build',
         'scan-view',
-        'lldb.sh',
     }
 
     bin_dir = install_dir / 'bin'
