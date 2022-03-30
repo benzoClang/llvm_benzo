@@ -24,7 +24,7 @@ import os
 import shutil
 import sys
 import textwrap
-from typing import List, Optional, Set, Tuple
+from typing import List, NamedTuple, Optional, Set, Tuple
 
 import benzo_version
 from base_builders import Builder, LLVMBuilder
@@ -47,16 +47,32 @@ def set_default_toolchain(toolchain: toolchains.Toolchain) -> None:
     Builder.toolchain = toolchain
 
 
-def extract_profdata() -> Optional[Path]:
-    tar = paths.pgo_profdata_tar()
-    if not tar:
-        return None
-    utils.check_call(['tar', '-jxC', str(paths.OUT_DIR), '-f', str(tar)])
+class Profile(NamedTuple):
+    """ Optimization profiles including PGO and BOLT. """
+    PgoProfile: Optional[Path]
+    ClangBoltProfile: Optional[Path]
+
+
+def extract_profiles() -> Profile:
+    pgo_profdata_tar = paths.pgo_profdata_tar()
+    if not pgo_profdata_tar:
+        return Profile(None, None)
+    utils.check_call(['tar', '-jxC', str(paths.OUT_DIR), '-f', str(pgo_profdata_tar)])
     profdata_file = paths.OUT_DIR / paths.pgo_profdata_filename()
     if not profdata_file.exists():
-        raise RuntimeError(
-            f'Failed to extract profdata from {tar} to {paths.OUT_DIR}')
-    return profdata_file
+        logger().info('PGO profdata missing')
+        return Profile(None, None)
+
+    bolt_fdata_tar = paths.bolt_fdata_tar()
+    if not bolt_fdata_tar:
+        return Profile(profdata_file, None)
+    utils.check_call(['tar', '-jxC', str(paths.OUT_DIR), '-f', str(bolt_fdata_tar)])
+    clang_bolt_fdata_file = paths.OUT_DIR / 'clang.fdata'
+    if not clang_bolt_fdata_file.exists():
+        logger().info('Clang BOLT profile missing')
+        return Profile(profdata_file, None)
+
+    return Profile(profdata_file, clang_bolt_fdata_file)
 
 
 def build_runtimes(build_lldb_server: bool):
@@ -220,6 +236,42 @@ def remove_static_libraries(static_lib_dir, necessary_libs=None):
             if lib_file.endswith('.a') and lib_file not in necessary_libs:
                 static_library = os.path.join(static_lib_dir, lib_file)
                 os.remove(static_library)
+
+
+def bolt_optimize(toolchain_builder: LLVMBuilder, clang_fdata: Path):
+    """ Optimize using llvm-bolt. """
+    major_version = toolchain_builder.installed_toolchain.version.major_version()
+    bin_dir = toolchain_builder.install_dir / 'bin'
+    llvm_bolt_bin = bin_dir / 'llvm-bolt'
+
+    clang_bin = bin_dir / ('clang-' + major_version)
+    clang_bin_orig = bin_dir / ('clang-' + major_version + '.orig')
+    shutil.move(clang_bin, clang_bin_orig)
+    args = [
+        llvm_bolt_bin, '-data=' + str(clang_fdata), '-o', clang_bin,
+        '-reorder-blocks=cache+', '-reorder-functions=hfsort+',
+        '-split-functions=3', '-split-all-cold', '-split-eh', '-dyno-stats',
+        '-icf=1', '--use-gnu-stack', clang_bin_orig
+    ]
+    utils.check_call(args)
+
+
+def bolt_instrument(toolchain_builder: LLVMBuilder):
+    """ Instrument binary using llvm-bolt """
+    major_version = toolchain_builder.installed_toolchain.version.major_version()
+    bin_dir = toolchain_builder.install_dir / 'bin'
+    llvm_bolt_bin = bin_dir / 'llvm-bolt'
+
+    clang_bin = bin_dir / ('clang-' + major_version)
+    clang_bin_orig = bin_dir / ('clang-' + major_version + '.orig')
+    clang_afdo_path = paths.OUT_DIR / 'bolt_collection' / 'clang'
+    shutil.move(clang_bin, clang_bin_orig)
+    args = [
+        llvm_bolt_bin, '-instrument', '--instrumentation-file=' + str(clang_afdo_path),
+        '--instrumentation-file-append-pid', '-o', clang_bin,
+        clang_bin_orig
+    ]
+    utils.check_call(args)
 
 
 def package_toolchain(toolchain_builder: LLVMBuilder,
@@ -448,6 +500,24 @@ def parse_args():
         dest='lto',
         help='Disable LTO to speed up build (only affects stage2)')
 
+    bolt_group = parser.add_mutually_exclusive_group()
+    bolt_group.add_argument(
+        '--bolt',
+        action='store_true',
+        default=False,
+        help='Enable BOLT optimization (only affects stage2).  This option increases build time.')
+    bolt_group.add_argument(
+        '--no-bolt',
+        action='store_false',
+        default=False,
+        dest='bolt',
+        help='Disable BOLT optimization to speed up build (only affects stage2)')
+    bolt_group.add_argument(
+        '--bolt-instrument',
+        action='store_true',
+        default=False,
+        help='Enable BOLT instrumentation (only affects stage2).')
+
     parser.add_argument(
         '--no-pgo',
         action='store_true',
@@ -541,6 +611,8 @@ def main():
         BuilderRegistry.add_skips(args.skip)
     elif args.build:
         BuilderRegistry.add_builds(args.build)
+    do_bolt = args.bolt and not args.debug and not args.build_instrumented
+    do_bolt_instrument = args.bolt_instrument and not args.debug and not args.build_instrumented
     do_runtimes = not args.skip_runtimes
     do_package = not args.skip_package
     do_strip = not args.no_strip
@@ -554,9 +626,9 @@ def main():
     if not hosts.build_host().is_linux:
         raise RuntimeError('Only building on Linux is supported')
 
-    logger().info('do_build=%r do_stage1=%r do_stage2=%r do_runtimes=%r do_package=%r lto=%r do_ccache=%r' %
+    logger().info('do_build=%r do_stage1=%r do_stage2=%r do_runtimes=%r do_package=%r lto=%r do_ccache=%r bolt=%r' %
                   (not args.skip_build, BuilderRegistry.should_build('stage1'), BuilderRegistry.should_build('stage2'),
-                  do_runtimes, do_package, args.lto, do_ccache))
+                  do_runtimes, do_package, args.lto, do_ccache, args.bolt))
 
     # Build the stage1 Clang for the build host
     instrumented = args.build_instrumented
@@ -583,9 +655,9 @@ def main():
 
     if need_host:
         if not args.no_pgo:
-            profdata = extract_profdata()
+            profdata, clang_bolt_fdata = extract_profiles()
         else:
-            profdata = None
+            profdata, clang_bolt_fdata = None, None
 
         stage2 = builders.Stage2Builder()
         stage2.build_name = args.build_name
@@ -597,6 +669,8 @@ def main():
         stage2.enable_assertions = args.enable_assertions
         stage2.lto = args.lto
         stage2.build_instrumented = instrumented
+        stage2.bolt_optimize = args.bolt
+        stage2.bolt_instrument = args.bolt_instrument
         stage2.num_jobs = args.jobs
         stage2.profdata_file = profdata if profdata else None
 
@@ -625,15 +699,27 @@ def main():
         # Annotate the version string if there is no profdata.
         if profdata is None:
             stage2_tags.append('NO PGO PROFILE')
+        if clang_bolt_fdata is None:
+            stage2_tags.append('NO BOLT PROFILE')
         stage2.build_tags = stage2_tags
 
         stage2.build()
+
+        if do_bolt and clang_bolt_fdata is not None:
+            bolt_optimize(stage2, clang_bolt_fdata)
+
         if not (stage2.build_instrumented or stage2.debug_build):
             set_default_toolchain(stage2.installed_toolchain)
 
         Builder.output_toolchain = stage2.installed_toolchain
         if hosts.build_host().is_linux and do_runtimes:
             build_runtimes(build_lldb_server=build_lldb)
+
+    # Instrument with llvm-bolt. Must be the last build step to prevent other
+    # build steps generating BOLT profiles.
+    if need_host:
+        if do_bolt_instrument:
+            bolt_instrument(stage2)
 
     if do_package and need_host:
         package_toolchain(
