@@ -177,6 +177,14 @@ class Builder:  # pylint: disable=too-few-public-methods
         env['PATH'] = os.pathsep.join(p for p in paths if p)
         return env
 
+    @property
+    def resource_dir(self) -> Path:
+        return self.toolchain.clang_lib_dir / 'lib' / self._config.target_os.crt_dir
+
+    @property
+    def output_resource_dir(self) -> Path:
+        return self.output_toolchain.clang_lib_dir / 'lib' / self._config.target_os.crt_dir
+
     def install(self) -> None:
         """Installs built artifacts."""
 
@@ -470,12 +478,12 @@ class LLVMBaseBuilder(CMakeBuilder):  # pylint: disable=abstract-method
 
         # Use Python for any host build (not Android targets, however)
         target = self._config.target_os
-        if target != hosts.Host.Android:
+        if target != hosts.Host.Android and target != hosts.Host.Baremetal:
             defines['Python3_LIBRARY'] = str(paths.get_python_lib(target))
             defines['Python3_LIBRARIES'] = str(paths.get_python_lib(target))
             defines['Python3_INCLUDE_DIR'] = str(paths.get_python_include_dir(target))
             defines['Python3_INCLUDE_DIRS'] = str(paths.get_python_include_dir(target))
-            defines['Python3_EXECUTABLE'] = str(paths.get_python_executable(hosts.build_host()))
+        defines['Python3_EXECUTABLE'] = str(paths.get_python_executable(hosts.build_host()))
 
         return defines
 
@@ -488,9 +496,9 @@ class LLVMRuntimeBuilder(LLVMBaseBuilder):  # pylint: disable=abstract-method
     @property
     def install_dir(self) -> Path:
         arch = self._config.target_arch
-        if self._config.platform:
-            return self.output_toolchain.resource_dir / arch.value
-        return self.output_toolchain.path / 'runtimes_ndk_cxx' / arch.value
+        if self._config.target_os.is_android and not self._config.platform:
+            return self.output_toolchain.path / 'runtimes_ndk_cxx' / arch.value
+        return self.output_resource_dir / arch.value
 
     @property
     def cmake_defines(self) -> Dict[str, str]:
