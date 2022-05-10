@@ -418,22 +418,11 @@ class LLVMBaseBuilder(CMakeBuilder):  # pylint: disable=abstract-method
     """Base builder for both llvm and individual runtime lib."""
 
     enable_assertions: bool = False
-    ccache: bool = False
-    ccache_dir: str = None
     num_jobs: int = None
 
     @property
     def cmake_defines(self) -> Dict[str, str]:
         defines = super().cmake_defines
-
-        if self.ccache:
-            defines['LLVM_CCACHE_BUILD'] = 'ON'
-            if self.ccache_dir is None:
-                defines['LLVM_CCACHE_DIR'] = str(paths.OUT_DIR / '.ccache')
-            else:
-                defines['LLVM_CCACHE_DIR'] = str(Path(self.ccache_dir))
-        else:
-            defines['LLVM_CCACHE_BUILD'] = 'OFF'
 
         if self.enable_assertions:
             defines['LLVM_ENABLE_ASSERTIONS'] = 'ON'

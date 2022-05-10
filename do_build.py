@@ -588,16 +588,6 @@ def parse_args():
         help='Don\'t build toolchain components or platforms.  Choices: ' + \
             known_components_str)
 
-    parser.add_argument(
-        '--ccache',
-        action='store_true',
-        default=False,
-        help='Enable the use of ccache during build')
-    parser.add_argument(
-        '--ccache-dir',
-        action='store',
-        help='Use custom path for cache instead of out_dir/.ccache')
-
     return parser.parse_args()
 
 
@@ -617,7 +607,6 @@ def main():
     do_package = not args.skip_package
     do_strip = not args.no_strip
     do_strip_host_package = do_strip and not args.debug
-    do_ccache = args.ccache
     build_lldb = 'lldb' not in args.no_build
 
     need_host = ('linux' not in args.no_build)
@@ -626,9 +615,9 @@ def main():
     if not hosts.build_host().is_linux:
         raise RuntimeError('Only building on Linux is supported')
 
-    logger().info('do_build=%r do_stage1=%r do_stage2=%r do_runtimes=%r do_package=%r lto=%r do_ccache=%r bolt=%r' %
+    logger().info('do_build=%r do_stage1=%r do_stage2=%r do_runtimes=%r do_package=%r lto=%r bolt=%r' %
                   (not args.skip_build, BuilderRegistry.should_build('stage1'), BuilderRegistry.should_build('stage2'),
-                  do_runtimes, do_package, args.lto, do_ccache, args.bolt))
+                  do_runtimes, do_package, args.lto, args.bolt))
 
     # Build the stage1 Clang for the build host
     instrumented = args.build_instrumented
@@ -637,8 +626,6 @@ def main():
     stage1.build_name = 'stage1'
     stage1.svn_revision = benzo_version.get_svn_revision()
     stage1.clang_vendor = 'benzoClang'
-    stage1.ccache = args.ccache
-    stage1.ccache_dir = args.ccache_dir
     # Build lldb for lldb-tblgen. It will be used to build lldb-server.
     stage1.build_lldb = build_lldb
     stage1.build_android_targets = args.debug or instrumented
@@ -663,8 +650,6 @@ def main():
         stage2.build_name = args.build_name
         stage2.svn_revision = benzo_version.get_svn_revision()
         stage2.clang_vendor = 'benzoClang'
-        stage2.ccache = args.ccache
-        stage2.ccache_dir = args.ccache_dir
         stage2.debug_build = args.debug
         stage2.enable_assertions = args.enable_assertions
         stage2.lto = args.lto
