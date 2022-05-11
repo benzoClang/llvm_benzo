@@ -20,7 +20,7 @@ import re
 import utils
 
 _patch_level = '0'
-_svn_revision = ''
+_svn_revision = 'r461406'
 
 def get_svn_revision():
     if _svn_revision != '':
