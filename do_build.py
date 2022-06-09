@@ -616,6 +616,8 @@ def main():
     do_strip_host_package = do_strip and not args.debug
     build_lldb = 'lldb' not in args.no_build
 
+    host_configs = [configs.host_config()]
+
     need_host = ('linux' not in args.no_build)
 
     logging.basicConfig(level=logging.DEBUG)
@@ -629,7 +631,7 @@ def main():
     # Build the stage1 Clang for the build host
     instrumented = args.build_instrumented
 
-    stage1 = builders.Stage1Builder()
+    stage1 = builders.Stage1Builder(host_configs)
     stage1.build_name = 'stage1'
     stage1.svn_revision = benzo_version.get_svn_revision()
     stage1.clang_vendor = 'benzoClang'
@@ -642,7 +644,7 @@ def main():
 
     if build_lldb:
         # Swig is needed for host lldb.
-        swig_builder = builders.SwigBuilder()
+        swig_builder = builders.SwigBuilder(host_configs)
         swig_builder.build()
     else:
         swig_builder = None
@@ -653,7 +655,7 @@ def main():
         else:
             profdata, clang_bolt_fdata = None, None
 
-        stage2 = builders.Stage2Builder()
+        stage2 = builders.Stage2Builder(host_configs)
         stage2.build_name = args.build_name
         stage2.svn_revision = benzo_version.get_svn_revision()
         stage2.clang_vendor = 'benzoClang'
@@ -666,7 +668,7 @@ def main():
         stage2.num_jobs = args.jobs
         stage2.profdata_file = profdata if profdata else None
 
-        libxml2_builder = builders.LibXml2Builder()
+        libxml2_builder = builders.LibXml2Builder(host_configs)
         libxml2_builder.build()
         stage2.libxml2 = libxml2_builder
 
@@ -674,15 +676,15 @@ def main():
         if build_lldb:
             stage2.swig_executable = swig_builder.install_dir / 'bin' / 'swig'
 
-            xz_builder = builders.XzBuilder()
+            xz_builder = builders.XzBuilder(host_configs)
             xz_builder.build()
             stage2.liblzma = xz_builder
 
-            libncurses = builders.LibNcursesBuilder()
+            libncurses = builders.LibNcursesBuilder(host_configs)
             libncurses.build()
             stage2.libncurses = libncurses
 
-            libedit_builder = builders.LibEditBuilder()
+            libedit_builder = builders.LibEditBuilder(host_configs)
             libedit_builder.libncurses = libncurses
             libedit_builder.build()
             stage2.libedit = libedit_builder

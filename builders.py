@@ -59,7 +59,6 @@ class Stage1Builder(base_builders.LLVMBuilder):
     name: str = 'stage1'
     install_dir: Path = paths.OUT_DIR / 'stage1-install'
     build_android_targets: bool = False
-    config_list: List[configs.Config] = [configs.host_config()]
 
     @property
     def llvm_targets(self) -> Set[str]:
@@ -118,7 +117,6 @@ class Stage1Builder(base_builders.LLVMBuilder):
 class Stage2Builder(base_builders.LLVMBuilder):
     name: str = 'stage2'
     install_dir: Path = paths.OUT_DIR / 'stage2-install'
-    config_list: List[configs.Config] = [configs.host_config()]
     remove_install_dir: bool = True
     debug_build: bool = False
     build_instrumented: bool = False
@@ -568,7 +566,6 @@ class LibOMPBuilder(base_builders.LLVMRuntimeBuilder):
 class LibNcursesBuilder(base_builders.AutoconfBuilder, base_builders.LibInfo):
     name: str = 'libncurses'
     src_dir: Path = paths.LIBNCURSES_SRC_DIR
-    config_list: List[configs.Config] = [configs.host_config()]
     lib_version: str = '6'
 
     @property
@@ -585,7 +582,6 @@ class LibNcursesBuilder(base_builders.AutoconfBuilder, base_builders.LibInfo):
 class LibEditBuilder(base_builders.AutoconfBuilder, base_builders.LibInfo):
     name: str = 'libedit'
     src_dir: Path = paths.LIBEDIT_SRC_DIR
-    config_list: List[configs.Config] = [configs.host_config()]
     libncurses: base_builders.LibInfo
     lib_version: str = '0'
 
@@ -611,7 +607,6 @@ class LibEditBuilder(base_builders.AutoconfBuilder, base_builders.LibInfo):
 class SwigBuilder(base_builders.AutoconfBuilder):
     name: str = 'swig'
     src_dir: Path = paths.SWIG_SRC_DIR
-    config_list: List[configs.Config] = [configs.host_config()]
 
     @property
     def config_flags(self) -> List[str]:
@@ -631,14 +626,12 @@ class SwigBuilder(base_builders.AutoconfBuilder):
 class XzBuilder(base_builders.CMakeBuilder, base_builders.LibInfo):
     name: str = 'liblzma'
     src_dir: Path = paths.XZ_SRC_DIR
-    config_list: List[configs.Config] = [configs.host_config()]
     static_lib: bool = True
 
 
 class LibXml2Builder(base_builders.CMakeBuilder, base_builders.LibInfo):
     name: str = 'libxml2'
     src_dir: Path = paths.LIBXML2_SRC_DIR
-    config_list: List[configs.Config] = [configs.host_config()]
     lib_version: str = '2.9.13'
 
     @contextlib.contextmanager
