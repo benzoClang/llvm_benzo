@@ -431,10 +431,8 @@ class LLVMBaseBuilder(CMakeBuilder):  # pylint: disable=abstract-method
 
         if self.num_jobs is None:
             defines['LLVM_PARALLEL_COMPILE_JOBS'] = subprocess.getoutput("nproc")
-            defines['LLVM_PARALLEL_LINK_JOBS'] = subprocess.getoutput("nproc")
         else:
             defines['LLVM_PARALLEL_COMPILE_JOBS'] = self.num_jobs
-            defines['LLVM_PARALLEL_LINK_JOBS'] = self.num_jobs
 
         # https://github.com/android-ndk/ndk/issues/574 - Don't depend on libtinfo.
         defines['LLVM_ENABLE_TERMINFO'] = 'OFF'
