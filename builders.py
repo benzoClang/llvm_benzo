@@ -158,6 +158,7 @@ class Stage2Builder(base_builders.LLVMBuilder):
             # needed by libclang_rt.profile from being resolved.  Manually adding
             # the libclang_rt.profile to linker flags fixes the issue.
             ldflags.append(str(self.resource_dir / 'libclang_rt.profile-x86_64.a'))
+        ldflags.append('-Wl,--icf=safe')
         return ldflags
 
     @property
