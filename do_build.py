@@ -476,6 +476,8 @@ def package_toolchain(toolchain_builder: LLVMBuilder,
         if necessary_lib_file.startswith('libc++'):
             libprefix = lib_dir / 'x86_64-unknown-linux-gnu'
             if not os.path.exists(libprefix):
+                libprefix = lib_dir / 'x86_64-unknown-linux-musl'
+            if not os.path.exists(libprefix):
                 libprefix = lib_dir
         else:
             libprefix = lib_dir
@@ -522,7 +524,10 @@ def package_toolchain(toolchain_builder: LLVMBuilder,
 
     # Package up the resulting trimmed install/ directory.
     if create_tar:
-        tarball_name = package_name + '-' + host.os_tag + '.tar.bz2'
+        tag = host.os_tag
+        if isinstance(toolchain_builder.config_list[0], configs.LinuxMuslConfig):
+            tag = host.os_tag_musl
+        tarball_name = package_name + '-' + tag + '.tar.bz2'
         package_path = dist_dir / tarball_name
         logger().info(f'Packaging {package_path}')
         args = ['tar', '-cjC', install_host_dir, '-f', package_path, package_name]
@@ -696,6 +701,19 @@ def parse_args():
         help='Don\'t build toolchain components or platforms.  Choices: ' + \
             known_components_str)
 
+    musl_group = parser.add_mutually_exclusive_group()
+    musl_group.add_argument(
+        '--musl',
+        action='store_true',
+        default=False,
+        help='Build against musl libc')
+    musl_group.add_argument(
+        '--no-musl',
+        action='store_false',
+        default=True,
+        dest='musl',
+        help="Don't Build against musl libc")
+
     return parser.parse_args()
 
 
@@ -719,8 +737,9 @@ def main():
     do_strip = not args.no_strip
     do_strip_host_package = do_strip and not args.debug
     build_lldb = 'lldb' not in args.no_build
+    musl = args.musl
 
-    host_configs = [configs.host_config()]
+    host_configs = [configs.host_config(musl)]
 
     benzo_version.set_llvm_next(True)
 
@@ -730,9 +749,9 @@ def main():
     if not hosts.build_host().is_linux:
         raise RuntimeError('Only building on Linux is supported')
 
-    logger().info('do_build=%r do_stage1=%r do_stage2=%r do_runtimes=%r do_package=%r lto=%r bolt=%r' %
+    logger().info('do_build=%r do_stage1=%r do_stage2=%r do_runtimes=%r do_package=%r lto=%r bolt=%r musl=%r' %
                   (not args.skip_build, BuilderRegistry.should_build('stage1'), BuilderRegistry.should_build('stage2'),
-                  do_runtimes, do_package, args.lto, args.bolt))
+                  do_runtimes, do_package, args.lto, args.bolt, args.musl))
 
     # Build the stage1 Clang for the build host
     instrumented = args.build_instrumented
@@ -824,12 +843,6 @@ def main():
         if do_runtimes:
             build_runtimes(build_lldb_server=build_lldb)
 
-    # Instrument with llvm-bolt. Must be the last build step to prevent other
-    # build steps generating BOLT profiles.
-    if need_host:
-        if do_bolt_instrument:
-            bolt_instrument(stage2)
-
     # stage2 test is on when stage2 is enabled unless --skip-tests or
     # on instrumented builds.
     need_tests = not args.skip_tests and need_host and \
@@ -839,6 +852,12 @@ def main():
         # http://b/197645198 Temporarily skip tests on Debug builds
         if not args.debug:
             stage2.test()
+
+    # Instrument with llvm-bolt. Must be the last build step to prevent other
+    # build steps generating BOLT profiles.
+    if need_host:
+        if do_bolt_instrument:
+            bolt_instrument(stage2)
 
     if do_package and need_host:
         package_toolchain(

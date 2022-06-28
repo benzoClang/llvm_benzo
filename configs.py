@@ -226,15 +226,16 @@ class LinuxMuslConfig(LinuxConfig):
     """Config for Musl sysroot bootstrapping"""
     target_os: hosts.Host = hosts.Host.Linux
     target_arch: hosts.Arch
-    is_cross_compiling: bool = True
+    is_cross_compiling: bool
 
-    def __init__(self, arch: hosts.Arch = hosts.Arch.X86_64):
+    def __init__(self, arch: hosts.Arch = hosts.Arch.X86_64, is_cross_compiling: bool = True):
         self.triple = arch.llvm_arch + '-unknown-linux-musl'
         self.sysroot_triple = arch.llvm_arch + '-linux-musl'
         if arch is hosts.Arch.ARM:
             self.triple += 'eabihf'
             self.sysroot_triple += 'eabihf'
         self.target_arch = arch
+        self.is_cross_compiling = is_cross_compiling
 
     @property
     def llvm_triple(self) -> str:
@@ -245,6 +246,10 @@ class LinuxMuslConfig(LinuxConfig):
         cflags = super().cflags + [
                 f'--target={self.llvm_triple}',
                 '-D_LIBCPP_HAS_MUSL_LIBC',
+                # gcc does this automatically and glibc includes it in features.h
+                # Neither clang nor musl include it, so add it here.  Otherwise
+                # libedit fails with error: wchar_t must store ISO 10646 characters
+                '-include stdc-predef.h',
         ]
         if self.target_arch is hosts.Arch.ARM:
             cflags.append('-march=armv7-a')
@@ -254,7 +259,12 @@ class LinuxMuslConfig(LinuxConfig):
     @property
     def cxxflags(self) -> List[str]:
         cxxflags = super().cxxflags + [
-                '-stdlib=libc++',
+            # -stdlib=libc++ prevents the "Check for working CXX compiler"
+            # step from failing when it can't find libstdc++.
+            # -Wno-unused-command-line-argument is necessary for commands that
+            # use -Werror -nostdinc++.
+            '-stdlib=libc++',
+            '-Wno-unused-command-line-argument',
         ]
 
         return cxxflags
@@ -262,8 +272,8 @@ class LinuxMuslConfig(LinuxConfig):
     @property
     def ldflags(self) -> List[str]:
         return super().ldflags + [
-                '-rtlib=compiler-rt',
-                '-stdlib=libc++',
+            '-rtlib=compiler-rt',
+            '-Wl,-z,stack-size=2097152',
         ]
 
     @property
@@ -285,6 +295,40 @@ class LinuxMuslConfig(LinuxConfig):
         """Override gcc bindirs."""
         return []
 
+    @property
+    def cmake_defines(self) -> Dict[str, str]:
+        defines = super().cmake_defines
+        defines['LIBCXX_USE_COMPILER_RT'] = 'TRUE'
+        defines['LIBCXXABI_USE_COMPILER_RT'] = 'TRUE'
+        defines['LIBUNWIND_USE_COMPILER_RT'] = 'TRUE'
+        defines['LIBCXXABI_USE_LLVM_UNWINDER'] = 'TRUE'
+
+        # The musl sysroots contain empty libdl.a, libpthread.a and librt.a to
+        # satisfy the parts of the LLVM build that hardcode -lpthread, etc.,
+        # but that causes LLVM to mis-detect them as libpthread.so, etc.
+        # Hardcoded them as disabled to prevent references from .deplibs
+        # sections.
+        defines['LIBCXX_HAS_RT_LIB'] = 'FALSE'
+        defines['LIBCXX_HAS_PTHREAD_LIB'] = 'FALSE'
+        defines['LIBCXXABI_HAS_PTHREAD_LIB'] = 'FALSE'
+        defines['LIBUNWIND_HAS_DL_LIB'] = 'FALSE'
+        defines['LIBUNWIND_HAS_PTHREAD_LIB'] = 'FALSE'
+
+        defines['LLVM_DEFAULT_TARGET_TRIPLE'] = self.llvm_triple
+
+        return defines
+
+
+class LinuxMuslHostConfig(LinuxMuslConfig):
+    """Config for Musl as the host"""
+    def __init__(self):
+        super().__init__(is_cross_compiling=False)
+
+    @property
+    def env(self) -> Dict[str, str]:
+        env = super().env
+        env['LD_LIBRARY_PATH'] = str(self.sysroot / 'lib')
+        return env
 
 class AndroidConfig(_BaseConfig):
     """Config for Android targets."""
@@ -292,7 +336,7 @@ class AndroidConfig(_BaseConfig):
     target_os: hosts.Host = hosts.Host.Android
 
     target_arch: hosts.Arch
-    _toolchain_path: Path
+    _toolchain_path: Optional[Path]
 
     static: bool = False
     platform: bool = False
@@ -347,9 +391,12 @@ class AndroidConfig(_BaseConfig):
     @property
     def cflags(self) -> List[str]:
         cflags = super().cflags
-        toolchain_bin = paths.GCC_ROOT / self._toolchain_path / 'bin'
         cflags.append(f'--target={self.llvm_triple}')
-        cflags.append(f'-B{toolchain_bin}')
+
+        if self._toolchain_path:
+            toolchain_bin = paths.GCC_ROOT / self._toolchain_path / 'bin'
+            cflags.append(f'-B{toolchain_bin}')
+
         cflags.append('-ffunction-sections')
         cflags.append('-fdata-sections')
         return cflags
@@ -406,7 +453,7 @@ class AndroidConfig(_BaseConfig):
 class AndroidARMConfig(AndroidConfig):
     """Configs for android arm targets."""
     target_arch: hosts.Arch = hosts.Arch.ARM
-    _toolchain_path: Path = Path('arm/arm-linux-androideabi-4.9/arm-linux-androideabi')
+    _toolchain_path: Optional[Path] = Path('arm/arm-linux-androideabi-4.9/arm-linux-androideabi')
 
     @property
     def cflags(self) -> List[str]:
@@ -418,7 +465,7 @@ class AndroidARMConfig(AndroidConfig):
 class AndroidAArch64Config(AndroidConfig):
     """Configs for android arm64 targets."""
     target_arch: hosts.Arch = hosts.Arch.AARCH64
-    _toolchain_path: Path = Path('aarch64/aarch64-linux-android-4.9/aarch64-linux-android')
+    _toolchain_path: Optional[Path] = Path('aarch64/aarch64-linux-android-4.9/aarch64-linux-android')
 
     @property
     def cflags(self) -> List[str]:
@@ -430,13 +477,13 @@ class AndroidAArch64Config(AndroidConfig):
 class AndroidX64Config(AndroidConfig):
     """Configs for android x86_64 targets."""
     target_arch: hosts.Arch = hosts.Arch.X86_64
-    _toolchain_path: Path = Path('x86/x86_64-linux-android-4.9/x86_64-linux-android')
+    _toolchain_path: Optional[Path] = Path('x86/x86_64-linux-android-4.9/x86_64-linux-android')
 
 
 class AndroidI386Config(AndroidConfig):
     """Configs for android x86 targets."""
     target_arch: hosts.Arch = hosts.Arch.I386
-    _toolchain_path: Path = Path('x86/x86_64-linux-android-4.9/x86_64-linux-android')
+    _toolchain_path: Optional[Path] = Path('x86/x86_64-linux-android-4.9/x86_64-linux-android')
 
     @property
     def cflags(self) -> List[str]:
@@ -445,10 +492,10 @@ class AndroidI386Config(AndroidConfig):
         return cflags
 
 
-def host_config() -> Config:
+def host_config(musl: bool=False) -> Config:
     """Returns the Config matching the current machine."""
     return {
-        hosts.Host.Linux: LinuxConfig,
+        hosts.Host.Linux: LinuxMuslHostConfig if musl else LinuxConfig
     }[hosts.build_host()]()
 
 

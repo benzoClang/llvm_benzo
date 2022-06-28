@@ -81,6 +81,9 @@ class Stage1Builder(base_builders.LLVMBuilder):
     @property
     def llvm_runtime_projects(self) -> Set[str]:
         proj = {'compiler-rt', 'libcxx', 'libcxxabi'}
+        if isinstance(self._config, configs.LinuxMuslConfig):
+            # libcxx builds against libunwind when building for musl
+            proj.add('libunwind')
         return proj
 
     @property
@@ -114,7 +117,7 @@ class Stage1Builder(base_builders.LLVMBuilder):
         return defines
 
     def test(self) -> None:
-        self._ninja(["check-clang", "check-llvm", "check-clang-tools"])
+        self._ninja(['check-clang', 'check-llvm', 'check-clang-tools'])
         # stage1 cannot run check-cxx yet
 
 
@@ -144,6 +147,9 @@ class Stage2Builder(base_builders.LLVMBuilder):
     @property
     def llvm_runtime_projects(self) -> Set[str]:
         proj = {'compiler-rt', 'libcxx', 'libcxxabi'}
+        if isinstance(self._config, configs.LinuxMuslConfig):
+            # libcxx builds against libunwind when building for musl
+            proj.add('libunwind')
         return proj
 
     @property
@@ -165,7 +171,10 @@ class Stage2Builder(base_builders.LLVMBuilder):
     def ldflags(self) -> List[str]:
         ldflags = super().ldflags
         if self._config.target_os.is_linux:
-            ldflags.append('-Wl,-rpath,\$ORIGIN/../lib/x86_64-unknown-linux-gnu')
+            if isinstance(self._config, configs.LinuxMuslConfig):
+                ldflags.append('-Wl,-rpath,\$ORIGIN/../lib/x86_64-unknown-linux-musl')
+            else:
+                ldflags.append('-Wl,-rpath,\$ORIGIN/../lib/x86_64-unknown-linux-gnu')
         # '$ORIGIN/../lib' is added by llvm's CMake rules.
         if self.bolt_optimize or self.bolt_instrument:
             ldflags.append('-Wl,-q')
@@ -236,6 +245,14 @@ class Stage2Builder(base_builders.LLVMBuilder):
             "$CURDIR/lldb" "$@"
         """))
         lldb_wrapper_path.chmod(0o755)
+
+    def test(self) -> None:
+        if isinstance(self._config, configs.LinuxMuslConfig):
+            # musl cannot run check-cxx yet
+            with timer.Timer(f'stage2_test'):
+                self._ninja(['check-clang', 'check-llvm', 'check-clang-tools'])
+        else:
+            super().test()
 
 
 class BuiltinsBuilder(base_builders.LLVMRuntimeBuilder):
@@ -476,9 +493,6 @@ class MuslHostRuntimeBuilder(base_builders.LLVMRuntimeBuilder):
         # compiler-rt CMake defines
         # ORC JIT fails to build with MUSL.
         defines['COMPILER_RT_BUILD_ORC'] = 'OFF'
-        # We don't have a libc++ for 32-bit musl.  It shouldn't be needed for
-        # compiler-rt, unless we're building tests.
-        del defines['LLVM_ENABLE_LIBCXX']
 
         # libunwind CMake defines
         if self.enable_assertions:
@@ -487,15 +501,9 @@ class MuslHostRuntimeBuilder(base_builders.LLVMRuntimeBuilder):
             defines['LIBUNWIND_ENABLE_ASSERTIONS'] = 'FALSE'
         defines['LIBUNWIND_ENABLE_SHARED'] = 'FALSE'
         defines['LIBUNWIND_TARGET_TRIPLE'] = self._config.llvm_triple
-        defines['LIBUNWIND_HAS_DL_LIB'] = 'FALSE'
-        defines['LIBUNWIND_HAS_PTHREAD_LIB'] = 'FALSE'
-        defines['LIBCXX_HAS_RT_LIB'] = 'FALSE'
-        defines['LIBCXX_HAS_PTHREAD_LIB'] = 'FALSE'
-        defines['LIBCXXABI_HAS_PTHREAD_LIB'] = 'FALSE'
         defines['COMPILER_RT_HAS_LIBSTDCXX'] = 'FALSE'
         defines['COMPILER_RT_HAS_LIBCXX'] = 'TRUE'
         defines['SANITIZER_CXX_ABI'] = 'libcxxabi'
-        defines['COMPILER_RT_HAS_GCC_S_LIB'] = 'FALSE'
         defines['COMPILER_RT_USE_BUILTINS_LIBRARY'] = 'TRUE'
 
         # Most builders use COMPILER_RT_DEFAULT_TARGET_TRIPLE, but that cause
@@ -535,14 +543,18 @@ class LibUnwindBuilder(base_builders.LLVMRuntimeBuilder):
     #  - A copy targeting the platform with exported symbols.
     # Bionic's libc.so exports the unwinder, so it needs a copy with exported
     # symbols. Everything else uses the NDK copy.
-    config_list: List[configs.Config] = (
-        configs.android_configs(platform=True) +
-        configs.android_configs(platform=False)
-    )
+    @property
+    def config_list(self) -> List[configs.Config]:
+        result = configs.android_configs(platform=False)
+        for arch in configs.android_configs(platform=True):
+            arch.extra_config = {'is_exported': True}
+            result.append(arch)
+
+        return result
 
     @property
     def is_exported(self) -> bool:
-        return self._config.platform
+        return self._config.extra_config and self._config.extra_config.get('is_exported', False)
 
     @property
     def output_dir(self) -> Path:
@@ -916,7 +928,7 @@ class DeviceSysrootsBuilder(base_builders.Builder):
             (dest_lib / 'libc++abi.a').unlink()
             (dest_lib / 'libc++_static.a').unlink()
             (dest_lib / 'libc++_shared.so').unlink()
-        # Each per-API-level directory has libc++.so, libc++.a.
+        # Each per-API-level directory has libc++.so and libc++.a.
         for subdir in dest_lib.iterdir():
             if subdir.is_symlink() or not subdir.is_dir():
                 continue
