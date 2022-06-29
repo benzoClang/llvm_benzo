@@ -182,14 +182,23 @@ class _GccConfig(_BaseConfig):  # pylint: disable=abstract-method
         return [self.gcc_root / self.gcc_triple / 'bin']
 
     @property
-    def lib_dirs(self) -> List[Path]:
+    def gcc_lib_dir(self) -> Path:
         gcc_lib_dir = self.gcc_root / 'lib' / 'gcc' / self.gcc_triple / self.gcc_ver
         if self.is_32_bit:
             gcc_lib_dir = gcc_lib_dir / '32'
-            gcc_builtin_dir = self.gcc_root / self.gcc_triple / 'lib32'
+        return gcc_lib_dir
+
+    @property
+    def gcc_builtin_dir(self)-> Path:
+        base = self.gcc_root / self.gcc_triple
+        if self.is_32_bit:
+            return base / 'lib32'
         else:
-            gcc_builtin_dir = self.gcc_root / self.gcc_triple / 'lib64'
-        return [gcc_lib_dir, gcc_builtin_dir]
+            return base / 'lib64'
+
+    @property
+    def lib_dirs(self) -> List[Path]:
+        return [self.gcc_lib_dir, self.gcc_builtin_dir]
 
 
 class LinuxConfig(_GccConfig):

@@ -76,7 +76,7 @@ def extract_profiles() -> Profile:
 
 
 def build_runtimes(build_lldb_server: bool):
-    builders.SysrootsBuilder().build()
+    builders.DeviceSysrootsBuilder().build()
     builders.BuiltinsBuilder().build()
     builders.LibUnwindBuilder().build()
     builders.PlatformLibcxxAbiBuilder().build()

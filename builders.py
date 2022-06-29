@@ -726,8 +726,39 @@ class LldbServerBuilder(base_builders.LLVMRuntimeBuilder):
         shutil.copy2(src_path, install_dir)
 
 
-class SysrootsBuilder(base_builders.Builder):
-    name: str = 'sysroots'
+class HostSysrootsBuilder(base_builders.Builder):
+    name: str = 'host-sysroots'
+    config_list: List[configs.Config] = None
+
+    def _build_config(self) -> None:
+        config = self._config
+        sysroot = config.sysroot
+        sysroot_lib = sysroot / 'lib'
+        if sysroot.exists():
+            shutil.rmtree(sysroot)
+        sysroot.parent.mkdir(parents=True, exist_ok=True)
+
+        # copy sysroot and add libgcc* to it.
+        shutil.copytree(config.gcc_root / config.gcc_triple,
+                        sysroot, symlinks=True)
+        shutil.copytree(config.gcc_lib_dir, sysroot_lib, dirs_exist_ok=True)
+
+        # b/237425904 cleanup: uncomment to remove libstdc++ after toolchain defaults to
+        # libc++
+        # (sysroot_lib / 'libstdc++.a').unlink()
+        # shutil.rmtree(sysroot / 'include' / 'c++' / '4.8.3')
+
+        # copy libc++ libs and headers from bootstrap prebuilts.  This is needed
+        # for the libcxx builder to pass CMake configuration.  The libcxx
+        # builder will subsequently overwrite these.
+        #shutil.copy(paths.WINDOWS_CLANG_PREBUILT_DIR / 'lib64' / 'libc++.a', sysroot_lib)
+        #shutil.copy(paths.WINDOWS_CLANG_PREBUILT_DIR / 'lib64' / 'libc++abi.a', sysroot_lib)
+        #shutil.copytree(paths.WINDOWS_CLANG_PREBUILT_DIR / 'include' / 'c++' / 'v1',
+        #                sysroot / 'include' / 'c++' / 'v1')
+
+
+class DeviceSysrootsBuilder(base_builders.Builder):
+    name: str = 'device-sysroots'
     config_list: List[configs.Config] = (
         configs.android_configs(platform=True) +
         configs.android_configs(platform=False)
