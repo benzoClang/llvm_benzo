@@ -124,6 +124,7 @@ class Stage2Builder(base_builders.LLVMBuilder):
     bolt_instrument: bool = False
     profdata_file: Optional[Path] = None
     lto: bool = True
+    num_link_jobs: int = None
 
     @property
     def llvm_targets(self) -> Set[str]:
@@ -188,7 +189,10 @@ class Stage2Builder(base_builders.LLVMBuilder):
             defines['LLVM_ENABLE_LTO'] = 'Thin'
 
             # Increase the ThinLTO link jobs limit to improve build speed.
-            defines['LLVM_PARALLEL_LINK_JOBS'] = 8
+            if not self.num_link_jobs is None:
+                defines['LLVM_PARALLEL_LINK_JOBS'] = self.num_link_jobs
+            else:
+                defines['LLVM_PARALLEL_LINK_JOBS'] = 8
 
         # Build libFuzzer here to be exported for the host fuzzer builds.
         defines['COMPILER_RT_BUILD_LIBFUZZER'] = 'ON'

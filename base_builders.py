@@ -416,6 +416,7 @@ class LLVMBaseBuilder(CMakeBuilder):  # pylint: disable=abstract-method
 
     enable_assertions: bool = False
     num_jobs: int = None
+    num_link_jobs: int = None
 
     @property
     def cmake_defines(self) -> Dict[str, str]:
@@ -510,6 +511,8 @@ class LLVMBuilder(LLVMBaseBuilder):
     clang_vendor: str
     enable_assertions: bool = False
     toolchain_name: str
+    num_jobs: int = None
+    num_link_jobs: int = None
 
     # lldb options.
     build_lldb: bool = True

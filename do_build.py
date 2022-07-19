@@ -484,6 +484,12 @@ def parse_args():
         help='Number of threads to use. Default: nproc will give number of available processing units.')
 
     parser.add_argument(
+        '--link-jobs',
+        type=int,
+        action='store',
+        help='Number of (stage2) Thin-LTO link jobs to run simultaneously. Default: 8.')
+
+    parser.add_argument(
         '--enable-assertions',
         action='store_true',
         default=False,
@@ -668,6 +674,7 @@ def main():
         stage2.bolt_optimize = args.bolt
         stage2.bolt_instrument = args.bolt_instrument
         stage2.num_jobs = args.jobs
+        stage2.num_link_jobs = args.link_jobs
         stage2.profdata_file = profdata if profdata else None
 
         libxml2_builder = builders.LibXml2Builder(host_configs)
