@@ -444,6 +444,7 @@ def package_toolchain(toolchain_builder: LLVMBuilder,
                         "lib64/*",
                     ]),
                 )"""))
+        bazel_file.write('\n')
 
     # Package up the resulting trimmed install/ directory.
     if create_tar:
