@@ -75,12 +75,6 @@ class Stage1Builder(base_builders.LLVMBuilder):
         return proj
 
     @property
-    def cflags(self) -> List[str]:
-        cflags = super().cflags
-        cflags.append('-Wno-unused-command-line-argument')
-        return cflags
-
-    @property
     def ldflags(self) -> List[str]:
         ldflags = super().ldflags
         # Use -static-libstdc++ to statically link the c++ runtime [1].  This
@@ -165,7 +159,6 @@ class Stage2Builder(base_builders.LLVMBuilder):
     @property
     def cflags(self) -> List[str]:
         cflags = super().cflags
-        cflags.append('-Wno-unused-command-line-argument')
         if self.profdata_file:
             cflags.append('-Wno-profile-instr-out-of-date')
             cflags.append('-Wno-profile-instr-unprofiled')
@@ -371,7 +364,6 @@ class CompilerRTBuilder(base_builders.LLVMRuntimeBuilder):
     def cflags(self) -> List[str]:
         cflags = super().cflags
         cflags.append('-funwind-tables')
-        cflags.append('-Wno-unused-command-line-argument')
         return cflags
 
     def install_config(self) -> None:
@@ -629,12 +621,6 @@ class LibOMPBuilder(base_builders.LLVMRuntimeBuilder):
         defines['OPENMP_ENABLE_OMPT_TOOLS'] = 'FALSE'
         defines['LIBOMP_ENABLE_SHARED'] = 'TRUE' if self.is_shared else 'FALSE'
         return defines
-
-    @property
-    def cflags(self) -> List[str]:
-        cflags = super().cflags
-        cflags.append('-Wno-unused-command-line-argument')
-        return cflags
 
     def install_config(self) -> None:
         # We need to install libomp manually.

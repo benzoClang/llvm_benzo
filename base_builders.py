@@ -206,7 +206,6 @@ class AutoconfBuilder(Builder):
     def cflags(self) -> List[str]:
         cflags = super().cflags
         cflags.append('-fPIC')
-        cflags.append('-Wno-unused-command-line-argument')
         if self._config.sysroot:
             cflags.append(f'--sysroot={self._config.sysroot}')
         return cflags
@@ -291,6 +290,7 @@ class CMakeBuilder(Builder):
     remove_cmake_cache: bool = False
     remove_install_dir: bool = False
     ninja_targets: List[str] = []
+    no_unused_cflag: str = " -Wno-unused-command-line-argument"
 
     @property
     def output_dir(self) -> Path:
@@ -328,9 +328,9 @@ class CMakeBuilder(Builder):
             'CMAKE_STRIP': str(self.toolchain.strip),
             'CMAKE_MT': str(self.toolchain.mt),
 
-            'CMAKE_ASM_FLAGS':  cflags_str,
-            'CMAKE_C_FLAGS': cflags_str,
-            'CMAKE_CXX_FLAGS': cxxflags_str,
+            'CMAKE_ASM_FLAGS':  cflags_str + self.no_unused_cflag,
+            'CMAKE_C_FLAGS': cflags_str + self.no_unused_cflag,
+            'CMAKE_CXX_FLAGS': cxxflags_str + self.no_unused_cflag,
 
             'CMAKE_EXE_LINKER_FLAGS': ldflags_str,
             'CMAKE_SHARED_LINKER_FLAGS': ldflags_str,
@@ -391,7 +391,7 @@ class CMakeBuilder(Builder):
         if self.remove_install_dir and self.install_dir.exists():
             shutil.rmtree(self.install_dir)
 
-        cmake_cmd: List[str] = [str(paths.CMAKE_BIN_PATH), '-G', 'Ninja']
+        cmake_cmd: List[str] = [str(paths.CMAKE_BIN_PATH), '-G', 'Ninja', '-Wno-dev']
 
         cmake_cmd.extend(f'-D{key}={val}' for key, val in self.cmake_defines.items())
         cmake_cmd.append(str(self.src_dir))
