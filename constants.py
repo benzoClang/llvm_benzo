@@ -21,7 +21,7 @@ from typing import Set
 CLANG_PREBUILT_VERSION: str = 'clang-r458507'
 
 # This is the ndk version used to build runtimes.
-NDK_VERSION: str = 'r23'
+NDK_VERSION: str = 'r25'
 
 # Targets for host.
 HOST_TARGETS: Set[str] = set(['X86', 'AArch64'])
