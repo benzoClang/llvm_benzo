@@ -642,7 +642,6 @@ def main():
     stage1 = builders.Stage1Builder(host_configs)
     stage1.build_name = 'stage1'
     stage1.svn_revision = benzo_version.get_svn_revision()
-    stage1.clang_vendor = 'benzoClang'
     # Build lldb for lldb-tblgen. It will be used to build lldb-server.
     stage1.build_lldb = build_lldb
     stage1.build_android_targets = args.debug or instrumented
@@ -666,7 +665,6 @@ def main():
         stage2 = builders.Stage2Builder(host_configs)
         stage2.build_name = args.build_name
         stage2.svn_revision = benzo_version.get_svn_revision()
-        stage2.clang_vendor = 'benzoClang'
         stage2.debug_build = args.debug
         stage2.enable_assertions = args.enable_assertions
         stage2.lto = args.lto

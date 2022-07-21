@@ -439,9 +439,9 @@ class LLVMBaseBuilder(CMakeBuilder):  # pylint: disable=abstract-method
         defines['LLVM_LIBDIR_SUFFIX'] = '64'
         defines['LLVM_VERSION_PATCH'] = benzo_version.get_patch_level()
         defines['CLANG_VERSION_PATCHLEVEL'] = benzo_version.get_patch_level()
-        defines['CLANG_REPOSITORY_STRING'] = 'https://github.com/benzoClang/llvm-project'
-        defines['CLANG_TC_DATE'] = datetime.datetime.now().strftime("%Y%m%d")
-        defines['TOOLCHAIN_REVISION_STRING'] = benzo_version.get_svn_revision()
+        defines['PACKAGE_VENDOR'] = 'benzoClang'
+        defines['PACKAGE_REPOSITORY'] = 'https://github.com/benzoClang/llvm-project'
+        defines['PACKAGE_REVISION'] = benzo_version.get_svn_revision()
 
         # http://b/111885871 - Disable building xray because of MacOS issues.
         defines['COMPILER_RT_BUILD_XRAY'] = 'OFF'
@@ -508,7 +508,6 @@ class LLVMBuilder(LLVMBaseBuilder):
     config_list: List[configs.Config]
     build_tags: Optional[List[str]] = None
     svn_revision: str
-    clang_vendor: str
     enable_assertions: bool = False
     toolchain_name: str
     num_jobs: int = None
@@ -614,8 +613,6 @@ class LLVMBuilder(LLVMBaseBuilder):
         else:
             tags_str = ''
 
-        defines['CLANG_VENDOR'] = self.clang_vendor
-        defines['LLD_VENDOR'] = self.clang_vendor
         defines['LLVM_BUILD_RUNTIME'] = 'ON'
 
         # Don't build OCaml bindings
