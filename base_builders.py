@@ -217,13 +217,6 @@ class AutoconfBuilder(Builder):
         return cxxflags
 
     @property
-    def ldflags(self) -> List[str]:
-        ldflags = super().ldflags
-        if self._config.target_os.is_linux:
-            ldflags.append('-Wl,-rpath,$ORIGIN/../lib64')
-        return ldflags
-
-    @property
     def config_flags(self) -> List[str]:
         """Parameters to configure."""
         return []
@@ -436,7 +429,6 @@ class LLVMBaseBuilder(CMakeBuilder):  # pylint: disable=abstract-method
         defines['LLVM_ENABLE_TERMINFO'] = 'OFF'
         defines['LLVM_ENABLE_THREADS'] = 'ON'
         defines['LLVM_USE_NEWPM'] = 'ON'
-        defines['LLVM_LIBDIR_SUFFIX'] = '64'
         defines['LLVM_VERSION_PATCH'] = benzo_version.get_patch_level()
         defines['CLANG_VERSION_PATCHLEVEL'] = benzo_version.get_patch_level()
         defines['PACKAGE_VENDOR'] = 'benzoClang'
@@ -582,7 +574,7 @@ class LLVMBuilder(LLVMBaseBuilder):
             defines['LLDB_ENABLE_CURSES'] = 'OFF'
 
     def _install_deps(self) -> None:
-        lib_dir = self.install_dir / 'lib64'
+        lib_dir = self.install_dir / 'lib'
         lib_dir.mkdir(exist_ok=True, parents=True)
 
         if self.swig_executable:

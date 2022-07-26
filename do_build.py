@@ -166,7 +166,7 @@ def normalize_llvm_host_libs(install_dir: Path, host: hosts.Host, version: Versi
         else:
             return '1.0', '1'
 
-    libdir = os.path.join(install_dir, 'lib64')
+    libdir = os.path.join(install_dir, 'lib')
     for libname, libformat in libs.items():
         short_version, major = getVersions(libname)
 
@@ -373,7 +373,7 @@ def package_toolchain(toolchain_builder: LLVMBuilder,
     }
 
     bin_dir = install_dir / 'bin'
-    lib_dir = install_dir / 'lib64'
+    lib_dir = install_dir / 'lib'
     strip_cmd = Builder.toolchain.strip
 
     for binary in bin_dir.iterdir():
@@ -386,7 +386,12 @@ def package_toolchain(toolchain_builder: LLVMBuilder,
                 # Strip all non-global symbols and debug info.
                     utils.check_call([strip_cmd, binary])
 
-    # FIXME: check that all libs under lib64/clang/<version>/ are created.
+    # Symlink lib64 to lib.
+    # TODO: Remove this once all users moved to the new directory.
+    lib64_dir = install_dir / 'lib64'
+    lib64_dir.symlink_to('lib')
+
+    # FIXME: check that all libs under lib/clang/<version>/ are created.
     for necessary_bin_file in necessary_bin_files:
         if not (bin_dir / necessary_bin_file).is_file():
             raise RuntimeError(f'Did not find {necessary_bin_file} in {bin_dir}')
@@ -441,7 +446,7 @@ def package_toolchain(toolchain_builder: LLVMBuilder,
                     name = "binaries",
                     srcs = glob([
                         "bin/*",
-                        "lib64/*",
+                        "lib/*",
                     ]),
                 )"""))
         bazel_file.write('\n')
