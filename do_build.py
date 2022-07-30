@@ -148,7 +148,7 @@ def install_wrappers(llvm_install_path: Path) -> None:
 def normalize_llvm_host_libs(install_dir: Path, host: hosts.Host, version: Version) -> None:
     if host.is_linux:
         libs = {'libLLVM': 'libLLVM-{version}git.so',
-                'libclang': 'libclang.so.{version}git',
+                'libclang': 'libclang.so.{version}',
                 'libclang-cpp': 'libclang-cpp.so.{version}git',
                 'libc++': 'libc++.so.{version}',
                 'libc++abi': 'libc++abi.so.{version}'
@@ -159,6 +159,8 @@ def normalize_llvm_host_libs(install_dir: Path, host: hosts.Host, version: Versi
                }
 
     def getVersions(libname: str) -> Tuple[str, str]:
+        if libname == 'libclang':
+            return version.major, version.major
         if libname == 'libclang-cpp':
             return version.major, version.major
         if not libname.startswith('libc++'):
@@ -170,10 +172,11 @@ def normalize_llvm_host_libs(install_dir: Path, host: hosts.Host, version: Versi
     for libname, libformat in libs.items():
         short_version, major = getVersions(libname)
 
-        soname_version = '13' if libname == 'libclang' else major
-        soname_lib = os.path.join(libdir, libformat.format(version=soname_version))
         if libname.startswith('libclang') and libname != 'libclang-cpp':
-            soname_lib = soname_lib[:-3]
+            soname_version = major + 'git'
+        else:
+            soname_version = major
+        soname_lib = os.path.join(libdir, libformat.format(version=soname_version))
         real_lib = os.path.join(libdir, libformat.format(version=short_version))
 
         preserved_libnames = ('libLLVM', 'libclang-cpp')
