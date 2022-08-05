@@ -206,6 +206,7 @@ class AutoconfBuilder(Builder):
     def cflags(self) -> List[str]:
         cflags = super().cflags
         cflags.append('-fPIC')
+        cflags.append('-Wno-unused-command-line-argument')
         if self._config.sysroot:
             cflags.append(f'--sysroot={self._config.sysroot}')
         return cflags
@@ -428,7 +429,6 @@ class LLVMBaseBuilder(CMakeBuilder):  # pylint: disable=abstract-method
         # https://github.com/android-ndk/ndk/issues/574 - Don't depend on libtinfo.
         defines['LLVM_ENABLE_TERMINFO'] = 'OFF'
         defines['LLVM_ENABLE_THREADS'] = 'ON'
-        defines['LLVM_USE_NEWPM'] = 'ON'
         if patch_level := benzo_version.get_patch_level():
             defines['LLVM_VERSION_PATCH'] = patch_level
         defines['PACKAGE_VENDOR'] = 'benzoClang'

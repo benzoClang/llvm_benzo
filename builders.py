@@ -101,10 +101,6 @@ class Stage1Builder(base_builders.LLVMBuilder):
         # Don't build libfuzzer as part of the first stage build.
         defines['COMPILER_RT_BUILD_LIBFUZZER'] = 'OFF'
 
-        # Hide the 'Policy CMP0114 is not set' warnings
-        defines['CMAKE_POLICY_DEFAULT_CMP0114'] = 'OLD'
-        defines['CMAKE_POLICY_DEFAULT_CMP0116'] = 'OLD'
-
         return defines
 
 
@@ -169,12 +165,7 @@ class Stage2Builder(base_builders.LLVMBuilder):
         defines = super().cmake_defines
         defines['SANITIZER_ALLOW_CXXABI'] = 'OFF'
         defines['LLVM_POLLY_LINK_INTO_TOOLS'] = 'ON'
-        defines['CLANG_DEFAULT_LINKER'] = 'lld'
         defines['CLANG_PYTHON_BINDINGS_VERSIONS'] = '3'
-
-        # Hide the 'Policy CMP0114 is not set' warnings
-        defines['CMAKE_POLICY_DEFAULT_CMP0114'] = 'OLD'
-        defines['CMAKE_POLICY_DEFAULT_CMP0116'] = 'OLD'
 
         if (self.lto and
                 not self.build_instrumented and
