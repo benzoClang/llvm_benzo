@@ -22,7 +22,7 @@ import utils
 _llvm_next = True
 
 _patch_level = '0'
-_svn_revision = 'r468218'
+_svn_revision = 'r470170'
 
 
 def set_llvm_next(llvm_next: bool):
