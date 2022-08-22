@@ -450,9 +450,6 @@ class LLVMBaseBuilder(CMakeBuilder):  # pylint: disable=abstract-method
         defines['LLVM_INCLUDE_BENCHMARKS'] = 'OFF'
         defines['LLVM_INCLUDE_EXAMPLES'] = 'OFF'
 
-        # Disable per-target runtimes directory
-        defines['LLVM_ENABLE_PER_TARGET_RUNTIME_DIR'] = 'OFF'
-
         # Use Python for any host build (not Android targets, however)
         target = self._config.target_os
         if target != hosts.Host.Android and target != hosts.Host.Baremetal:
