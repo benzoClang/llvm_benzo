@@ -121,7 +121,7 @@ class Stage2Builder(base_builders.LLVMBuilder):
     bolt_optimize: bool = False
     bolt_instrument: bool = False
     profdata_file: Optional[Path] = None
-    lto: bool = True
+    lto: bool = False
     num_link_jobs: int = None
 
     @property
