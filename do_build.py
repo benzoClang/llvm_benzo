@@ -143,6 +143,7 @@ def install_wrappers(llvm_install_path: Path) -> None:
     # based on the host.
     go_env = dict(os.environ)
     go_env['PATH'] = str(paths.GO_BIN_PATH) + os.pathsep + go_env['PATH']
+    go_env['GOROOT'] = str(paths.GO_ROOT)
     utils.check_call([sys.executable, wrapper_build_script,
                       '--config=android',
                       '--use_ccache=false',

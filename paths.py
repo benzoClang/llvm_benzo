@@ -61,6 +61,7 @@ NDK_LIBCXXABI_HEADERS: Path = NDK_BASE / 'sources' / 'cxx-stl' / 'llvm-libc++abi
 NDK_SUPPORT_HEADERS: Path = NDK_BASE / 'sources' / 'android' / 'support' / 'include'
 
 GCC_ROOT: Path = PREBUILTS_DIR / 'gcc' / hosts.build_host().os_tag
+GO_ROOT: Path = PREBUILTS_DIR / 'go' / hosts.build_host().os_tag
 
 _PYTHON_VER = '3.10'
 _PYTHON_VER_SHORT = _PYTHON_VER.replace('.', '')
