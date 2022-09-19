@@ -21,6 +21,7 @@ import datetime
 import logging
 import multiprocessing
 import os
+import re
 import shutil
 import subprocess
 from typing import cast, Dict, List, Optional, Set, Sequence
@@ -45,8 +46,28 @@ class LibInfo:
     name: str
     _config: configs.Config
 
-    lib_version: str
     static_lib: bool = False
+
+    @property
+    def lib_version(self) -> str:
+        target_os = self._config.target_os
+
+        libname = self.name + '.so'
+        lib = self.install_dir / 'lib' / libname
+
+        if not lib.exists():
+            raise RuntimeError('Lookup of version before library is built')
+
+        objdump_output = utils.check_output([toolchains.get_prebuilt_toolchain().objdump,
+                                             '-p', lib])
+
+        regex = f'SONAME\\s*{self.name}.so.([0-9.]*)'
+        version = re.findall(regex, objdump_output)
+        if not version:
+            print('objdump output is')
+            print(objdump_output)
+            raise RuntimeError(f'Cannot find regex pattern {regex}')
+        return version[0]
 
     @property
     def install_dir(self) -> Path:
@@ -63,11 +84,12 @@ class LibInfo:
 
     @property
     def _lib_suffix(self) -> str:
+        target_os = self._config.target_os
         if self.static_lib:
             return '.a'
-        return {
-            hosts.Host.Linux: f'.so.{self.lib_version}',
-        }[self._config.target_os]
+        if target_os.is_linux:
+            return f'.so.{self.lib_version}'
+        raise RuntimeError('Unknown target OS')
 
     @property
     def link_libraries(self) -> List[Path]:
