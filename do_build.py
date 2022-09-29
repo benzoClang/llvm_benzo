@@ -779,7 +779,6 @@ def main():
             stage2_tags.append('NO BOLT PROFILE')
         stage2.build_tags = stage2_tags
 
-        add_lib_links('stage1')
         stage2.build()
 
         if do_bolt and clang_bolt_fdata is not None:
