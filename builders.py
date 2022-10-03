@@ -71,11 +71,16 @@ class Stage1Builder(base_builders.LLVMBuilder):
 
     @property
     def llvm_projects(self) -> Set[str]:
-        proj = {'clang', 'lld', 'libcxxabi', 'libcxx', 'compiler-rt'}
+        proj = {'clang', 'lld'}
         if self.build_extra_tools:
             proj.add('clang-tools-extra')
         if self.build_lldb:
             proj.add('lldb')
+        return proj
+
+    @property
+    def llvm_runtime_projects(self) -> Set[str]:
+        proj = {'compiler-rt', 'libcxx', 'libcxxabi'}
         return proj
 
     @property
@@ -131,10 +136,14 @@ class Stage2Builder(base_builders.LLVMBuilder):
 
     @property
     def llvm_projects(self) -> Set[str]:
-        proj = {'clang', 'lld', 'libcxxabi', 'libcxx', 'compiler-rt',
-                'clang-tools-extra', 'polly', 'bolt'}
+        proj = {'clang', 'lld', 'clang-tools-extra', 'polly', 'bolt'}
         if self.build_lldb:
             proj.add('lldb')
+        return proj
+
+    @property
+    def llvm_runtime_projects(self) -> Set[str]:
+        proj = {'compiler-rt', 'libcxx', 'libcxxabi'}
         return proj
 
     @property
@@ -374,13 +383,14 @@ class CompilerRTBuilder(base_builders.LLVMRuntimeBuilder):
         # Still run `ninja install`.
         super().install_config()
 
+        lib_dir = self.install_dir / 'lib' / 'linux'
+
         # Install the fuzzer library to the old {arch}/libFuzzer.a path for
         # backwards compatibility.
         arch = self._config.target_arch
         sarch = 'i686' if arch == hosts.Arch.I386 else arch.value
         static_lib_filename = 'libclang_rt.fuzzer-' + sarch + '-android.a'
 
-        lib_dir = self.install_dir / 'lib' / 'linux'
         arch_dir = lib_dir / arch.value
         arch_dir.mkdir(parents=True, exist_ok=True)
         shutil.copy2(lib_dir / static_lib_filename, arch_dir / 'libFuzzer.a')
@@ -947,7 +957,7 @@ class PlatformLibcxxAbiBuilder(base_builders.LLVMRuntimeBuilder):
     @property
     def cmake_defines(self) -> Dict[str, str]:
         defines: Dict[str, str] = super().cmake_defines
-        defines['LLVM_ENABLE_RUNTIMES'] ='libcxxabi;libcxx'
+        defines['LLVM_ENABLE_RUNTIMES'] ='libcxx;libcxxabi'
         defines['LIBCXXABI_ENABLE_SHARED'] = 'OFF'
         defines['LIBCXXABI_TARGET_TRIPLE'] = self._config.llvm_triple
 
