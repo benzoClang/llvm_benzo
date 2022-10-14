@@ -433,6 +433,7 @@ class LLVMBaseBuilder(CMakeBuilder):  # pylint: disable=abstract-method
         defines['LLVM_ENABLE_THREADS'] = 'ON'
         if patch_level := benzo_version.get_patch_level():
             defines['LLVM_VERSION_PATCH'] = patch_level
+        defines['LLVM_VERSION_SUFFIX'] = ""
         defines['PACKAGE_VENDOR'] = 'benzoClang'
         defines['PACKAGE_REPOSITORY'] = 'https://github.com/benzoClang/llvm-project'
         defines['PACKAGE_REVISION'] = benzo_version.get_svn_revision()
