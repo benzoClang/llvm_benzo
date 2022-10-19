@@ -779,6 +779,10 @@ def main():
         stage2.num_link_jobs = args.link_jobs
         stage2.profdata_file = profdata if profdata else None
 
+        libzstd_builder = builders.ZstdBuilder(host_configs)
+        libzstd_builder.build()
+        stage2.libzstd = libzstd_builder
+
         libxml2_builder = builders.LibXml2Builder(host_configs)
         libxml2_builder.build()
         stage2.libxml2 = libxml2_builder

@@ -47,6 +47,7 @@ class LibInfo:
     _config: configs.Config
 
     static_lib: bool = False
+    with_lib_version: bool = True
 
     @property
     def lib_version(self) -> str:
@@ -88,7 +89,7 @@ class LibInfo:
         if self.static_lib:
             return '.a'
         if target_os.is_linux:
-            return f'.so.{self.lib_version}'
+            return f'.so.{self.lib_version}' if self.with_lib_version else '.so'
         raise RuntimeError('Unknown target OS')
 
     @property
@@ -532,6 +533,7 @@ class LLVMBuilder(LLVMBaseBuilder):
     toolchain_name: str
     num_jobs: int = None
     num_link_jobs: int = None
+    libzstd: Optional[LibInfo] = None
     # not a singleton because we'd build the 32-bit runtime in the future.
     runtimes_triples: Set[str] = set()
 
@@ -608,7 +610,14 @@ class LLVMBuilder(LLVMBaseBuilder):
         else:
             defines['LLDB_ENABLE_CURSES'] = 'OFF'
 
-        defines['LLVM_ENABLE_ZSTD'] = 'OFF'
+        if self.libzstd:
+            defines['LLVM_ENABLE_ZSTD'] = 'FORCE_ON'
+            defines['LLVM_USE_STATIC_ZSTD'] = 'TRUE'
+            defines['zstd_LIBRARY'] = self.libzstd.link_libraries[0]
+            defines['zstd_STATIC_LIBRARY'] = self.libzstd.link_libraries[1]
+            defines['zstd_INCLUDE_DIR'] = self.libzstd.include_dir
+        else:
+            defines['LLVM_ENABLE_ZSTD'] = 'OFF'
 
         defines['LLDB_INCLUDE_TESTS'] = 'OFF'
 

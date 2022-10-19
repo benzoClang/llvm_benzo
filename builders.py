@@ -715,6 +715,26 @@ class XzBuilder(base_builders.CMakeBuilder, base_builders.LibInfo):
     static_lib: bool = True
 
 
+
+class ZstdBuilder(base_builders.CMakeBuilder, base_builders.LibInfo):
+    name: str = 'libzstd'
+    src_dir: Path = paths.ZSTD_SRC_DIR / 'build' / 'cmake'
+    with_lib_version: bool = False
+
+    @property
+    def cmake_defines(self) -> Dict[str, str]:
+        defines = super().cmake_defines
+        defines['ZSTD_BUILD_PROGRAMS'] = 'OFF'
+        return defines
+
+    @property
+    def link_libraries(self) -> List[Path]:
+        # LLVM requires both dynamic and static libzstd.
+        libs = super().link_libraries
+        libs.append(self.install_dir / 'lib' / 'libzstd.a')
+        return libs
+
+
 class LibXml2Builder(base_builders.CMakeBuilder, base_builders.LibInfo):
     name: str = 'libxml2'
     src_dir: Path = paths.LIBXML2_SRC_DIR
