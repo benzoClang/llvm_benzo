@@ -29,6 +29,7 @@ import configs
 import constants
 import hosts
 import mapfile
+import multiprocessing
 import paths
 import utils
 
@@ -186,7 +187,7 @@ class Stage2Builder(base_builders.LLVMBuilder):
             if not self.num_link_jobs is None:
                 defines['LLVM_PARALLEL_LINK_JOBS'] = self.num_link_jobs
             else:
-                defines['LLVM_PARALLEL_LINK_JOBS'] = 8
+                defines['LLVM_PARALLEL_LINK_JOBS'] = min(int(multiprocessing.cpu_count() / 2), 16)
 
         # Build libFuzzer here to be exported for the host fuzzer builds.
         defines['COMPILER_RT_BUILD_LIBFUZZER'] = 'ON'
