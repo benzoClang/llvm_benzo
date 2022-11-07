@@ -105,12 +105,6 @@ class Stage1Builder(base_builders.LLVMBuilder):
 
         defines['LLVM_BUILD_TOOLS'] = 'ON'
 
-        # Make libc++.so a symlink to libc++.so.x instead of a linker script that
-        # also adds -lc++abi.  Statically link libc++abi to libc++ so it is not
-        # necessary to pass -lc++abi explicitly.
-        defines['LIBCXX_ENABLE_ABI_LINKER_SCRIPT'] = 'OFF'
-        defines['LIBCXX_ENABLE_STATIC_ABI_LIBRARY'] = 'ON'
-
         # Don't build libfuzzer as part of the first stage build.
         defines['COMPILER_RT_BUILD_LIBFUZZER'] = 'OFF'
 
@@ -224,13 +218,6 @@ class Stage2Builder(base_builders.LLVMBuilder):
         elif self.profdata_file:
             defines['LLVM_PROFDATA_FILE'] = str(self.profdata_file)
 
-        # Make libc++.so a symlink to libc++.so.x instead of a linker script that
-        # also adds -lc++abi.  Statically link libc++abi to libc++ so it is not
-        # necessary to pass -lc++abi explicitly.
-        defines['LIBCXX_ENABLE_STATIC_ABI_LIBRARY'] = 'ON'
-        defines['LIBCXX_ENABLE_ABI_LINKER_SCRIPT'] = 'OFF'
-        defines['LIBCXX_TEST_COMPILER_FLAGS'] = defines['CMAKE_CXX_FLAGS']
-        defines['LIBCXX_TEST_LINKER_FLAGS'] = defines['CMAKE_EXE_LINKER_FLAGS']
         return defines
 
     def install_config(self) -> None:
