@@ -186,7 +186,6 @@ class Stage2Builder(base_builders.LLVMBuilder):
     @property
     def cmake_defines(self) -> Dict[str, str]:
         defines = super().cmake_defines
-        defines['SANITIZER_ALLOW_CXXABI'] = 'OFF'
         defines['LLVM_POLLY_LINK_INTO_TOOLS'] = 'ON'
         defines['CLANG_PYTHON_BINDINGS_VERSIONS'] = '3'
 
