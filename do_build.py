@@ -231,8 +231,6 @@ def normalize_llvm_host_libs(install_dir: Path, host: hosts.Host, version: Versi
             soname_version = major
 
         soname_lib = os.path.join(libprefix, libformat.format(version=soname_version))
-        if libname.startswith('libclang') and libname != 'libclang-cpp':
-            soname_lib = soname_lib[:-3]
         real_lib = os.path.join(libprefix, libformat.format(version=short_version))
 
         preserved_libnames = ('libLLVM', 'libclang-cpp')
@@ -451,6 +449,11 @@ def package_toolchain(toolchain_builder: LLVMBuilder,
     lib64_dir = install_dir / 'lib64'
     lib64_dir.symlink_to('lib')
 
+    # Symlink lib/clang/<long> to lib/clang/<major>.
+    # TODO: Remove this once all users moved to the new directory.
+    lib_long_dir = install_dir / 'lib' / 'clang' / version.long_version()
+    lib_long_dir.symlink_to(version.major_version())
+
     # FIXME: check that all libs under lib/clang/<version>/ are created.
     for necessary_bin_file in necessary_bin_files:
         if not (bin_dir / necessary_bin_file).is_file():
@@ -481,7 +484,7 @@ def package_toolchain(toolchain_builder: LLVMBuilder,
 
     # Next, we copy over stdatomic.h and bits/stdatomic.h from bionic.
     libc_include_path = paths.ANDROID_DIR / 'bionic' / 'libc' / 'include'
-    header_path = lib_dir / 'clang' / version.long_version() / 'include'
+    header_path = lib_dir / 'clang' / version.major_version() / 'include'
 
     shutil.copy2(libc_include_path / 'stdatomic.h', header_path)
 
